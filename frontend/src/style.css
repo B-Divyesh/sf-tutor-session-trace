@@ -44,6 +44,7 @@ p { max-width: 72ch; }
 .eyebrow, .specimen-number { display: block; margin-bottom: 7px; color: var(--moss); font-size: .76rem; line-height: 1.2; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
 .specimen-number { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
 .primary { background: var(--moss); border-color: var(--moss); color: var(--linen); }
+.primary.button-link { background: var(--moss); border-color: var(--moss); color: var(--linen); }
 .button-link { display: inline-flex; align-items: center; justify-content: center; width: fit-content; text-decoration: none; }
 .wide { width: 100%; }
 .quiet-button, .text-button { border: 0; min-height: 44px; padding: 7px 4px; background: transparent; text-decoration: underline; text-underline-offset: 4px; }
@@ -134,6 +135,7 @@ pre.attachment, .shared-timeline pre { max-width: 100%; overflow: auto; padding:
 .task-list input:checked + span { color: var(--slate); text-decoration: line-through; }
 .task-list button { min-width: 44px; min-height: 44px; border: 0; padding: 0; color: var(--berry); background: transparent; font-size: 1.3rem; }
 .field-note, .consent-needed { color: var(--slate); font-size: .86rem; }
+.consent-warning { padding: 9px; color: var(--berry) !important; background: #f2d8d7; border-left: 3px solid var(--berry); font-weight: 700; }
 .consent { display: grid; grid-template-columns: 22px 1fr; gap: 10px; align-items: start; padding: 12px; background: var(--leaf-paper); border: 1px solid var(--line); }
 .consent input { margin-top: 2px; }
 .consent small { display: block; margin-top: 4px; color: var(--slate); font-weight: 400; line-height: 1.4; }

@@ -153,8 +153,8 @@ function tasks(session: TraceSession) {
 }
 
 function shareControls(session: TraceSession) {
+  if (session.share) return `<div class="share-result">${!session.consent ? '<p class="consent-warning">Consent is no longer recorded. Delete this shared copy now.</p>' : ''}<label for="share-url">Student link · expires ${formatDate(session.share.expiresAt)}</label><div><input id="share-url" readonly value="${escapeHtml(session.share.url)}"><button data-copy-share>Copy</button></div><p>${session.share.opens} recorded ${session.share.opens === 1 ? 'open' : 'opens'} <button class="text-button" data-refresh-opens>Refresh</button></p><button class="text-button danger-text" data-unshare>Delete shared copy now</button></div>`;
   if (!session.consent) return '<p class="consent-needed">Record consent to create a student link.</p>';
-  if (session.share) return `<div class="share-result"><label for="share-url">Student link · expires ${formatDate(session.share.expiresAt)}</label><div><input id="share-url" readonly value="${escapeHtml(session.share.url)}"><button data-copy-share>Copy</button></div><p>${session.share.opens} recorded ${session.share.opens === 1 ? 'open' : 'opens'} <button class="text-button" data-refresh-opens>Refresh</button></p><button class="text-button danger-text" data-unshare>Delete shared copy now</button></div>`;
   return `<form data-share-form><label for="expiry">Link expiry</label><select id="expiry" name="days">${paid ? '<option value="1">1 day</option><option value="7" selected>7 days</option><option value="14">14 days</option><option value="30">30 days</option>' : '<option value="7">7 days · free plan</option>'}</select><button class="primary wide" type="submit">Create student link</button><p class="field-note">Only student-visible notes and tasks are copied to the server.</p></form>`;
 }
 
@@ -210,7 +210,10 @@ function bindNotebook(active?: TraceSession) {
   document.querySelectorAll<HTMLInputElement>('[data-task-done]').forEach(box => box.addEventListener('change', () => { const task = active.tasks.find(item => item.id === box.dataset.taskDone); if (task) task.done = box.checked; save(box.checked ? 'Practice marked complete.' : 'Practice marked open.'); }));
   document.querySelectorAll<HTMLButtonElement>('[data-delete-task]').forEach(button => button.addEventListener('click', () => { active.tasks = active.tasks.filter(item => item.id !== button.dataset.deleteTask); save('Practice item removed.'); }));
   document.querySelector<HTMLInputElement>('[data-consent]')?.addEventListener('change', event => { active.consent = (event.target as HTMLInputElement).checked; save(active.consent ? 'Consent recorded.' : 'Consent removed. Existing links remain until deleted.'); });
-  document.querySelector<HTMLButtonElement>('[data-delete-session]')?.addEventListener('click', () => { if (confirm(`Delete the local session “${active.topic}” for ${active.student}? This cannot be undone. Shared copies must be deleted separately.`)) { store.sessions = store.sessions.filter(item => item.id !== active.id); store.activeId = store.sessions[0]?.id; save('Local session deleted.'); } });
+  document.querySelector<HTMLButtonElement>('[data-delete-session]')?.addEventListener('click', () => {
+    if (active.share) { announce('Delete the shared copy before deleting this local session.'); render(); return; }
+    if (confirm(`Delete the local session “${active.topic}” for ${active.student}? This cannot be undone.`)) { store.sessions = store.sessions.filter(item => item.id !== active.id); store.activeId = store.sessions[0]?.id; save('Local session deleted.'); }
+  });
   document.querySelector<HTMLButtonElement>('[data-export-md]')?.addEventListener('click', () => download(`${slug(active.student)}-${slug(active.topic)}.md`, sessionMarkdown(active), 'text/markdown'));
   document.querySelector<HTMLButtonElement>('[data-print]')?.addEventListener('click', () => window.print());
   document.querySelector<HTMLFormElement>('[data-share-form]')?.addEventListener('submit', event => void createShare(event, active));
