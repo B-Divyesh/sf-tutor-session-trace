@@ -5,11 +5,11 @@ Work order: `tutor-session-trace-repair-1`
 
 ## Release blockers repaired
 
-- Recap persistence is now a deliberate single-replica SQLite topology. The
-  fixed container deployer creates a product-specific Azure Files share,
-  mounts it at `/data`, sets `DATABASE_URL=sqlite:///data/trace.db`, and pins
-  the Container App to one always-on replica. Recaps therefore survive
-  revisions/restarts and every live request reaches the same durable database.
+- Recap persistence now uses a product-specific database on the factory's
+  managed PostgreSQL service. The fixed container deployer passes its URL as a
+  Container Apps secret, so recap create/read/delete remains consistent across
+  live replicas and survives revisions/restarts. SQLite remains a local-only
+  development/test fallback.
 - Container builds require a full Git SHA. The binary compiles that immutable
   SHA into `/health`, and the deployer fails the release if live `/health` does
   not report the exact SHA it built.
@@ -64,9 +64,10 @@ For a deployed service, use
 /opt/fleet/lib/deploy-container.sh tutor-session-trace /work/repo Dockerfile 8080
 ```
 
-The fixed path passes `BUILD_SHA=$(git rev-parse HEAD)`, configures the durable
-mount, forces `minReplicas=1` and `maxReplicas=1`, and validates the live
-health build identity before declaring success.
+The fixed path passes `BUILD_SHA=$(git rev-parse HEAD)`, provisions the
+dedicated PostgreSQL database, injects its URL as a runtime secret, supports
+one to three replicas, and validates the live health build identity before
+declaring success.
 
 ## Known gaps / next steps
 

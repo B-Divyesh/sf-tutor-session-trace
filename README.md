@@ -34,7 +34,7 @@ Configuration is environment-only:
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `PORT` | `8080` | HTTP listen port |
-| `DATABASE_URL` | `sqlite://data/trace.db` | SQLite connection URL |
+| `DATABASE_URL` | `sqlite://data/trace.db` | SQLite URL locally; managed PostgreSQL URL in production |
 | `FRONTEND_DIR` | `dist` | Built frontend directory |
 | `RUST_LOG` | `info,tower_http=info` | Structured log filter |
 
@@ -75,11 +75,11 @@ docker run --rm -p 8080:8080 -v trace-data:/data tutor-session-trace
 ```
 
 The multi-stage image runs as the unprivileged `trace` user. The factory
-container deployment provisions an Azure Files share at `/data` and pins the
-app to one always-on replica: this is the supported persistence boundary for
-SQLite and prevents separate replicas from serving separate recap databases.
-The deployment helper verifies that live `/health` reports the exact committed
-SHA it built. TLS and public routing belong at the deployment layer.
+container deployment provisions a product-specific database on the supported
+managed PostgreSQL service and supplies its URL as a Container Apps secret.
+That shared database keeps recap create/read/delete consistent as replicas
+scale. The deployment helper verifies that live `/health` reports the exact
+committed SHA it built. TLS and public routing belong at the deployment layer.
 
 ## Privacy and limits
 

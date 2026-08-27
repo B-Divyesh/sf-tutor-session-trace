@@ -2,7 +2,7 @@ use std::{
     collections::HashMap,
     net::SocketAddr,
     path::PathBuf,
-    sync::Arc,
+    sync::{Arc, Once},
     time::{Duration, Instant},
 };
 
@@ -19,7 +19,7 @@ use chrono::{DateTime, Days, Utc};
 use rand::{distr::Alphanumeric, Rng};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use sqlx::{Row, SqlitePool};
+use sqlx::{any::AnyPoolOptions, AnyPool, Row};
 use tokio::sync::Mutex;
 use tower_http::{
     limit::RequestBodyLimitLayer,
@@ -29,14 +29,20 @@ use tower_http::{
 
 #[derive(Clone)]
 pub struct AppState {
-    pub pool: SqlitePool,
+    pub pool: AnyPool,
     attempts: Arc<Mutex<HashMap<String, (Instant, u32)>>>,
 }
 
 const BUILD_SHA: &str = env!("BUILD_SHA");
+static SQLX_DRIVERS: Once = Once::new();
+
+pub fn database_pool_options() -> AnyPoolOptions {
+    SQLX_DRIVERS.call_once(sqlx::any::install_default_drivers);
+    AnyPoolOptions::new()
+}
 
 impl AppState {
-    pub fn new(pool: SqlitePool) -> Self {
+    pub fn new(pool: AnyPool) -> Self {
         Self {
             pool,
             attempts: Arc::new(Mutex::new(HashMap::new())),
@@ -141,7 +147,7 @@ async fn create_share(
         "moments": payload.moments,
         "next_tasks": payload.next_tasks,
     });
-    sqlx::query("INSERT INTO shares (id, delete_key, content, created_at, expires_at) VALUES (?, ?, ?, ?, ?)")
+    sqlx::query("INSERT INTO shares (id, delete_key, content, created_at, expires_at) VALUES ($1, $2, $3, $4, $5)")
         .bind(&id).bind(&delete_key).bind(content.to_string()).bind(now.to_rfc3339()).bind(expires.to_rfc3339())
         .execute(&state.pool).await
         .map_err(|_| error(StatusCode::INTERNAL_SERVER_ERROR, "The link could not be saved. Try again."))?;
@@ -162,7 +168,7 @@ async fn get_share(
             "This recap could not be found.",
         ));
     }
-    let row = sqlx::query("SELECT content, expires_at FROM shares WHERE id = ?")
+    let row = sqlx::query("SELECT content, expires_at FROM shares WHERE id = $1")
         .bind(&id)
         .fetch_optional(&state.pool)
         .await
@@ -181,13 +187,13 @@ async fn get_share(
         )
     })?;
     if expires < Utc::now() {
-        let _ = sqlx::query("DELETE FROM shares WHERE id = ?")
+        let _ = sqlx::query("DELETE FROM shares WHERE id = $1")
             .bind(&id)
             .execute(&state.pool)
             .await;
         return Err(error(StatusCode::GONE, "This recap has expired."));
     }
-    sqlx::query("UPDATE shares SET open_count = open_count + 1 WHERE id = ?")
+    sqlx::query("UPDATE shares SET open_count = open_count + 1 WHERE id = $1")
         .bind(&id)
         .execute(&state.pool)
         .await
@@ -218,7 +224,7 @@ async fn share_status(
     Path(id): Path<String>,
     Query(query): Query<KeyQuery>,
 ) -> Result<Json<Value>, (StatusCode, Json<ErrorBody>)> {
-    let row = sqlx::query("SELECT delete_key, open_count, expires_at FROM shares WHERE id = ?")
+    let row = sqlx::query("SELECT delete_key, open_count, expires_at FROM shares WHERE id = $1")
         .bind(&id)
         .fetch_optional(&state.pool)
         .await
@@ -241,7 +247,7 @@ async fn delete_share(
     Path(id): Path<String>,
     Query(query): Query<KeyQuery>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorBody>)> {
-    let result = sqlx::query("DELETE FROM shares WHERE id = ? AND delete_key = ?")
+    let result = sqlx::query("DELETE FROM shares WHERE id = $1 AND delete_key = $2")
         .bind(&id)
         .bind(&query.key)
         .execute(&state.pool)
@@ -413,8 +419,8 @@ async fn security_headers(request: Request<Body>, next: Next) -> Response {
     response
 }
 
-pub async fn cleanup_expired(pool: &SqlitePool) -> Result<u64, sqlx::Error> {
-    Ok(sqlx::query("DELETE FROM shares WHERE expires_at < ?")
+pub async fn cleanup_expired(pool: &AnyPool) -> Result<u64, sqlx::Error> {
+    Ok(sqlx::query("DELETE FROM shares WHERE expires_at < $1")
         .bind(Utc::now().to_rfc3339())
         .execute(pool)
         .await?

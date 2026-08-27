@@ -12,12 +12,11 @@ use axum::{
 };
 use http_body_util::BodyExt;
 use serde_json::{json, Value};
-use sqlx::sqlite::SqlitePoolOptions;
 use tower::ServiceExt;
-use tutor_session_trace::{app, AppState};
+use tutor_session_trace::{app, database_pool_options, AppState};
 
 async fn test_app() -> axum::Router {
-    let pool = SqlitePoolOptions::new()
+    let pool = database_pool_options()
         .max_connections(1)
         .connect("sqlite::memory:")
         .await
@@ -199,13 +198,15 @@ async fn forwarded_headers_cannot_bypass_the_peer_rate_limit() {
 }
 
 async fn durable_app(database_url: &str, peer: &str) -> axum::Router {
-    let options = database_url
-        .parse::<sqlx::sqlite::SqliteConnectOptions>()
-        .unwrap()
-        .create_if_missing(true);
-    let pool = SqlitePoolOptions::new()
+    let path = std::path::Path::new(database_url.strip_prefix("sqlite://").unwrap());
+    std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .unwrap();
+    let pool = database_pool_options()
         .max_connections(1)
-        .connect_with(options)
+        .connect(database_url)
         .await
         .unwrap();
     sqlx::migrate!().run(&pool).await.unwrap();

@@ -1,10 +1,9 @@
 use std::{env, net::SocketAddr, path::PathBuf, time::Duration};
 
-use sqlx::{sqlite::SqliteConnectOptions, sqlite::SqlitePoolOptions};
 use tokio::net::TcpListener;
 use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
-use tutor_session_trace::{app, cleanup_expired, AppState};
+use tutor_session_trace::{app, cleanup_expired, database_pool_options, AppState};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -17,19 +16,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let port: u16 = env::var("PORT").unwrap_or_else(|_| "8080".into()).parse()?;
     let database_url = env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite://data/trace.db".into());
-    if database_url == "sqlite://data/trace.db" {
-        std::fs::create_dir_all("data")?;
+    if let Some(path) = database_url.strip_prefix("sqlite://") {
+        let path = std::path::Path::new(path);
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(path)?;
     }
-    let options: SqliteConnectOptions = database_url
-        .parse::<SqliteConnectOptions>()?
-        .create_if_missing(true)
-        .foreign_keys(true);
-    // This deployment is deliberately one replica backed by a durable mounted
-    // volume. A single connection keeps SQLite's locking local and predictable.
-    let pool = SqlitePoolOptions::new()
+    // PostgreSQL is the production shared persistence boundary. Limiting the
+    // local SQLite fallback to one connection keeps developer/test locking
+    // predictable without making replica-local SQLite a deployment option.
+    let pool = database_pool_options()
         .max_connections(1)
         .acquire_timeout(Duration::from_secs(10))
-        .connect_with(options)
+        .connect(&database_url)
         .await?;
     sqlx::migrate!().run(&pool).await?;
     let removed = cleanup_expired(&pool).await?;
