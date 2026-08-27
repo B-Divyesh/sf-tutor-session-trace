@@ -68,10 +68,25 @@ provenance in `.factory/design.md` are unchanged.
 
 ## Deployment and live retest
 
-The deployment uses the existing Container App's `database-url` secret and
-`DATABASE_URL` secret reference so the prior shared-PostgreSQL persistence
-repair remains intact. Record the deployed image and post-deploy live checks
-below after the container rollout completes.
+The repair image `sociobotregistry.azurecr.io/sf-tutor-session-trace:bf4745d0c2bc`
+was built by Azure Container Registry and deployed by updating only the existing
+Container App image. Its `database-url` secret and `DATABASE_URL` secret
+reference were retained, preserving the prior shared-PostgreSQL persistence
+repair. Live `/health` returned the full immutable repair SHA
+`bf4745d0c2bc29ce42733e37b30148cd1906eea4`.
+
+- A fresh unauthenticated live 30-day `POST /api/shares` returned `403` with
+  the paid-license error.
+- Live `/privacy`, `/terms`, and a recap route returned 200; an unknown route
+  returned 404. Live responses retained CSP, HSTS, frame denial, and no-cache
+  HTML policy.
+- `BASE_URL=https://tutor-session-trace.sociobot.in npm run test:recaps`
+  passed all 8 concurrent lifecycles. The same-origin live `npm run test:e2e`
+  passed desktop and 390 px mobile keyboard/consent/recap/Axe checks with zero
+  console errors.
+- Fresh live browser checks confirmed same-origin free-page traffic, offline
+  service-worker reload, and service-worker update activation. `verify-url.sh`
+  passed live; `.factory/evidence/verify.json` captures that result.
 
 ## Known gaps
 
