@@ -1,3 +1,45 @@
+# Tutor Session Trace — verification handoff
+
+## Verification 2 verdict — FAIL
+
+Candidate `8c5a50f38e56a97931fe1f22e74036228efd2302` is live at
+<https://tutor-session-trace.sociobot.in> and live `/health` returns that
+exact SHA. The earlier deployment persistence and build-identity failure is
+fixed: eight live recap lifecycle tests with concurrent reads pass, and all
+live frontend assets byte-match the fresh production build.
+
+The release nevertheless **FAILS** its freemium acceptance contract. A fresh,
+unauthenticated direct `POST /api/shares` with `expires_days: 30` returned 201
+on the live service, then deleted with 204. A free user can therefore bypass
+the advertised seven-day free limit and $19 paid unlock. Server-side Sociobot
+entitlement verification (or a strict seven-day cap without one) is required
+before PASS. See `.factory/verification-2.md` for exact reproduction and all
+evidence.
+
+Other recorded P2 issues: `/privacy` and `/terms` render in the SPA but return
+HTTP 404 directly; the mobile moment “Remove” target is 34 px high rather
+than 44 px.
+
+## How verification was run
+
+```bash
+npm ci
+npm test
+npm run typecheck
+npm run build
+cargo fmt --check
+cargo clippy --all-targets -- -D warnings
+cargo build --locked --release
+```
+
+With the built server running, `npm run test:e2e` and `npm run test:recaps`
+passed locally and with `BASE_URL=https://tutor-session-trace.sociobot.in`.
+Local mobile Lighthouse: 96 performance, 100 accessibility, 100 best
+practices, 100 SEO; LCP 2,499 ms, CLS 0, TBT 0. Docker was unavailable in the
+verifier container, so the image itself was not run.
+
+---
+
 # Tutor Session Trace — repair handoff
 
 Date: 2026-08-27  
