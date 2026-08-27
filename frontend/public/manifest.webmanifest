@@ -1,0 +1,9 @@
+{
+  "name": "Tutor Session Trace",
+  "short_name": "Session Trace",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f4f0e5",
+  "theme_color": "#315a43",
+  "description": "A tutor-owned trace of coding attempts and next practice."
+}
