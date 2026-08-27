@@ -1,0 +1,26 @@
+[package]
+name = "tutor-session-trace"
+version = "1.0.0"
+edition = "2021"
+license = "MIT"
+
+[dependencies]
+axum = { version = "0.8", features = ["json"] }
+chrono = { version = "0.4", features = ["serde"] }
+rand = "0.9"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "sqlite", "migrate"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
+tower-http = { version = "0.6", features = ["fs", "trace", "limit"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+
+[profile.release]
+strip = true
+lto = "thin"
+codegen-units = 1
