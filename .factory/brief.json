@@ -1,0 +1,9 @@
+{
+  "slug": "tutor-session-trace",
+  "title": "Tutor Session Trace",
+  "artifact_class": "web-with-backend",
+  "user": "One-to-one remote coding tutors who need a lightweight record of student attempts, handoffs, and next practice tasks while teaching through existing video and editor tools.",
+  "smallest_useful_product": "A small web app with timestamped lesson moments, attempt/outcome tags, code snippet or link attachment, student-visible next task, and PDF/Markdown recap.",
+  "monetization": "freemium",
+  "constraints": "Avoid storing credentials or full private repositories; explicit student consent for notes; configurable deletion and share expiry."
+}
