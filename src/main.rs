@@ -41,7 +41,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     let frontend = PathBuf::from(env::var("FRONTEND_DIR").unwrap_or_else(|_| "dist".into()));
-    let router = app(AppState::new(pool), frontend);
+    let billing_product_url = env::var("SOCIOBOT_BILLING_PRODUCT_URL")
+        .unwrap_or_else(|_| "https://api.sociobot.in/api/v1/products/tutor-session-trace".into());
+    let router = app(
+        AppState::with_billing_product_url(pool, billing_product_url),
+        frontend,
+    );
     let address = SocketAddr::from(([0, 0, 0, 0], port));
     let listener = TcpListener::bind(address).await?;
     info!(%address, "Tutor Session Trace listening");

@@ -7,13 +7,31 @@ use std::{
 use axum::{
     body::Body,
     extract::connect_info::ConnectInfo,
+    extract::Query,
     http::{Request, StatusCode},
-    Extension,
+    routing::get,
+    Extension, Json, Router,
 };
 use http_body_util::BodyExt;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tower::ServiceExt;
 use tutor_session_trace::{app, database_pool_options, AppState};
+
+fn test_frontend() -> PathBuf {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let directory = std::env::temp_dir().join(format!("tutor-session-trace-frontend-{nonce}"));
+    std::fs::create_dir_all(&directory).unwrap();
+    std::fs::write(
+        directory.join("index.html"),
+        "<!doctype html><title>Trace</title>",
+    )
+    .unwrap();
+    directory
+}
 
 async fn test_app() -> axum::Router {
     let pool = database_pool_options()
@@ -22,7 +40,7 @@ async fn test_app() -> axum::Router {
         .await
         .unwrap();
     sqlx::migrate!().run(&pool).await.unwrap();
-    app(AppState::new(pool), PathBuf::from("dist")).layer(Extension(ConnectInfo(
+    app(AppState::new(pool), test_frontend()).layer(Extension(ConnectInfo(
         "203.0.113.10:443".parse::<SocketAddr>().unwrap(),
     )))
 }
@@ -147,6 +165,135 @@ async fn consent_is_required_and_private_fields_are_rejected() {
 }
 
 #[tokio::test]
+async fn paid_expiry_cannot_be_created_without_a_server_verified_license() {
+    let service = test_app().await;
+    let mut paid_expiry = valid_payload();
+    paid_expiry["expires_days"] = json!(30);
+
+    let response = service
+        .oneshot(
+            Request::post("/api/shares")
+                .header("content-type", "application/json")
+                .body(Body::from(paid_expiry.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::FORBIDDEN);
+    assert!(json_body(response).await["error"]
+        .as_str()
+        .unwrap()
+        .contains("license"));
+}
+
+#[derive(Deserialize)]
+struct VerifyQuery {
+    license: String,
+}
+
+#[derive(Serialize)]
+struct VerifyResponse {
+    valid: bool,
+    reason: &'static str,
+}
+
+async fn verification_stub(Query(query): Query<VerifyQuery>) -> Json<VerifyResponse> {
+    Json(VerifyResponse {
+        valid: query.license == "valid-license-token",
+        reason: if query.license == "valid-license-token" {
+            "ok"
+        } else {
+            "invalid"
+        },
+    })
+}
+
+#[tokio::test]
+async fn paid_expiry_requires_the_sociobot_verdict_not_a_client_flag() {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let verifier = tokio::spawn(async move {
+        axum::serve(
+            listener,
+            Router::new().route(
+                "/api/v1/products/tutor-session-trace/verify",
+                get(verification_stub),
+            ),
+        )
+        .await
+        .unwrap();
+    });
+
+    let pool = database_pool_options()
+        .max_connections(1)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    sqlx::migrate!().run(&pool).await.unwrap();
+    let service = app(
+        AppState::with_billing_product_url(
+            pool,
+            format!("http://{address}/api/v1/products/tutor-session-trace"),
+        ),
+        test_frontend(),
+    )
+    .layer(Extension(ConnectInfo(
+        "203.0.113.10:443".parse::<SocketAddr>().unwrap(),
+    )));
+    let mut paid_expiry = valid_payload();
+    paid_expiry["expires_days"] = json!(30);
+
+    let denied = service
+        .clone()
+        .oneshot(
+            Request::post("/api/shares")
+                .header("content-type", "application/json")
+                .header("x-sociobot-license", "a-forged-local-paid-flag")
+                .body(Body::from(paid_expiry.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(denied.status(), StatusCode::FORBIDDEN);
+
+    let allowed = service
+        .oneshot(
+            Request::post("/api/shares")
+                .header("content-type", "application/json")
+                .header("x-sociobot-license", "valid-license-token")
+                .body(Body::from(paid_expiry.to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(allowed.status(), StatusCode::CREATED);
+    verifier.abort();
+}
+
+#[tokio::test]
+async fn legal_routes_have_real_success_responses_and_unknown_paths_do_not() {
+    let service = test_app().await;
+    for path in ["/", "/privacy", "/terms", "/s/abcdefghijklmnopqrstuvwxyz"] {
+        let response = service
+            .clone()
+            .oneshot(Request::get(path).body(Body::empty()).unwrap())
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK, "{path}");
+    }
+    let missing = service
+        .oneshot(
+            Request::get("/not-a-product-route")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(missing.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
 async fn health_includes_build_identity_and_security_headers() {
     let response = test_app()
         .await
@@ -210,7 +357,7 @@ async fn durable_app(database_url: &str, peer: &str) -> axum::Router {
         .await
         .unwrap();
     sqlx::migrate!().run(&pool).await.unwrap();
-    app(AppState::new(pool), PathBuf::from("dist"))
+    app(AppState::new(pool), test_frontend())
         .layer(Extension(ConnectInfo(peer.parse::<SocketAddr>().unwrap())))
 }
 

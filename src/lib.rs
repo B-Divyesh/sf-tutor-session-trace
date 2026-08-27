@@ -9,10 +9,10 @@ use std::{
 use axum::{
     body::Body,
     extract::{connect_info::ConnectInfo, DefaultBodyLimit, Path, Query, State},
-    http::{header, HeaderName, HeaderValue, Request, StatusCode},
+    http::{header, HeaderMap, HeaderName, HeaderValue, Request, StatusCode},
     middleware::{self, Next},
     response::{IntoResponse, Response},
-    routing::{get, post},
+    routing::{get, get_service, post},
     Json, Router,
 };
 use chrono::{DateTime, Days, Utc};
@@ -31,9 +31,12 @@ use tower_http::{
 pub struct AppState {
     pub pool: AnyPool,
     attempts: Arc<Mutex<HashMap<String, (Instant, u32)>>>,
+    billing_product_url: Arc<str>,
+    billing_client: reqwest::Client,
 }
 
 const BUILD_SHA: &str = env!("BUILD_SHA");
+const BILLING_PRODUCT_URL: &str = "https://api.sociobot.in/api/v1/products/tutor-session-trace";
 static SQLX_DRIVERS: Once = Once::new();
 
 pub fn database_pool_options() -> AnyPoolOptions {
@@ -43,9 +46,22 @@ pub fn database_pool_options() -> AnyPoolOptions {
 
 impl AppState {
     pub fn new(pool: AnyPool) -> Self {
+        Self::with_billing_product_url(pool, BILLING_PRODUCT_URL)
+    }
+
+    pub fn with_billing_product_url(
+        pool: AnyPool,
+        billing_product_url: impl Into<Arc<str>>,
+    ) -> Self {
         Self {
             pool,
             attempts: Arc::new(Mutex::new(HashMap::new())),
+            billing_product_url: billing_product_url.into(),
+            billing_client: reqwest::Client::builder()
+                .connect_timeout(Duration::from_secs(3))
+                .timeout(Duration::from_secs(5))
+                .build()
+                .expect("the built-in HTTP client configuration is valid"),
         }
     }
 }
@@ -59,10 +75,19 @@ pub fn app(state: AppState, frontend: PathBuf) -> Router {
         .layer(DefaultBodyLimit::max(128 * 1024))
         .layer(RequestBodyLimitLayer::new(128 * 1024));
 
+    let client_routes = Router::new()
+        .route("/", get_service(ServeFile::new(index.clone())))
+        .route("/privacy", get_service(ServeFile::new(index.clone())))
+        .route("/terms", get_service(ServeFile::new(index.clone())))
+        .route("/s/{id}", get_service(ServeFile::new(index)));
+
     Router::new()
         .route("/health", get(health))
         .merge(share_routes)
-        .fallback_service(ServeDir::new(frontend).not_found_service(ServeFile::new(index)))
+        .merge(client_routes)
+        // Known browser routes above receive the SPA shell with 200. Unknown
+        // paths retain a genuine 404 instead of masquerading as legal pages.
+        .fallback_service(ServeDir::new(frontend))
         .layer(middleware::from_fn(security_headers))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
@@ -128,10 +153,12 @@ async fn health() -> Json<Value> {
 async fn create_share(
     State(state): State<AppState>,
     ConnectInfo(client): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Json(payload): Json<CreateShare>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ErrorBody>)> {
     rate_limit(&state, client).await?;
     validate(&payload)?;
+    require_paid_expiry(&state, &headers, payload.expires_days).await?;
 
     let now = Utc::now();
     let expires = now
@@ -156,6 +183,63 @@ async fn create_share(
         StatusCode::CREATED,
         Json(json!({ "id": id, "delete_key": delete_key, "expires_at": expires.to_rfc3339() })),
     ))
+}
+
+#[derive(Deserialize)]
+struct LicenseVerdict {
+    valid: bool,
+}
+
+async fn require_paid_expiry(
+    state: &AppState,
+    headers: &HeaderMap,
+    expires_days: u64,
+) -> Result<(), (StatusCode, Json<ErrorBody>)> {
+    if expires_days <= 7 {
+        return Ok(());
+    }
+
+    let Some(token) = headers
+        .get("x-sociobot-license")
+        .and_then(|value| value.to_str().ok())
+        .map(str::trim)
+        .filter(|token| !token.is_empty() && token.len() <= 4096)
+    else {
+        return Err(error(
+            StatusCode::FORBIDDEN,
+            "A valid Field guide license is required for links longer than seven days.",
+        ));
+    };
+
+    // The browser's cached entitlement only controls its presentation. The
+    // server repeats verification for every paid-duration creation so a
+    // modified request cannot bypass the paid boundary.
+    let valid = match state
+        .billing_client
+        .get(format!(
+            "{}/verify",
+            state.billing_product_url.trim_end_matches('/')
+        ))
+        .query(&[("license", token)])
+        .send()
+        .await
+    {
+        Ok(response) if response.status().is_success() => response
+            .json::<LicenseVerdict>()
+            .await
+            .map(|verdict| verdict.valid)
+            .unwrap_or(false),
+        _ => false,
+    };
+
+    if valid {
+        Ok(())
+    } else {
+        Err(error(
+            StatusCode::FORBIDDEN,
+            "A valid Field guide license is required for links longer than seven days.",
+        ))
+    }
 }
 
 async fn get_share(

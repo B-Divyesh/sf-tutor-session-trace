@@ -36,6 +36,7 @@ Configuration is environment-only:
 | `PORT` | `8080` | HTTP listen port |
 | `DATABASE_URL` | `sqlite://data/trace.db` | SQLite URL locally; managed PostgreSQL URL in production |
 | `FRONTEND_DIR` | `dist` | Built frontend directory |
+| `SOCIOBOT_BILLING_PRODUCT_URL` | Sociobot production product URL | Server-side license-verification endpoint for paid 8–30 day links |
 | `RUST_LOG` | `info,tower_http=info` | Structured log filter |
 
 `/health` reports the full immutable Git commit SHA compiled into the binary.
@@ -59,6 +60,7 @@ deployed origin) to execute eight create/read/status/delete lifecycles with
 concurrent reads. It leaves no recap records behind.
 
 The backend tests exercise consent rejection, private-field rejection,
+server-verified paid expiry enforcement, legal deep-link responses,
 create/open/count/revoke, durable reopen consistency, concurrent recap opens,
 the immutable health identity, HSTS, and resistance to spoofed forwarding
 headers in rate limiting. A simple local load smoke after starting the server is:

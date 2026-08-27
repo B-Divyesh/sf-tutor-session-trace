@@ -1,120 +1,81 @@
-# Tutor Session Trace — verification handoff
-
-## Verification 2 verdict — FAIL
-
-Candidate `8c5a50f38e56a97931fe1f22e74036228efd2302` is live at
-<https://tutor-session-trace.sociobot.in> and live `/health` returns that
-exact SHA. The earlier deployment persistence and build-identity failure is
-fixed: eight live recap lifecycle tests with concurrent reads pass, and all
-live frontend assets byte-match the fresh production build.
-
-The release nevertheless **FAILS** its freemium acceptance contract. A fresh,
-unauthenticated direct `POST /api/shares` with `expires_days: 30` returned 201
-on the live service, then deleted with 204. A free user can therefore bypass
-the advertised seven-day free limit and $19 paid unlock. Server-side Sociobot
-entitlement verification (or a strict seven-day cap without one) is required
-before PASS. See `.factory/verification-2.md` for exact reproduction and all
-evidence.
-
-Other recorded P2 issues: `/privacy` and `/terms` render in the SPA but return
-HTTP 404 directly; the mobile moment “Remove” target is 34 px high rather
-than 44 px.
-
-## How verification was run
-
-```bash
-npm ci
-npm test
-npm run typecheck
-npm run build
-cargo fmt --check
-cargo clippy --all-targets -- -D warnings
-cargo build --locked --release
-```
-
-With the built server running, `npm run test:e2e` and `npm run test:recaps`
-passed locally and with `BASE_URL=https://tutor-session-trace.sociobot.in`.
-Local mobile Lighthouse: 96 performance, 100 accessibility, 100 best
-practices, 100 SEO; LCP 2,499 ms, CLS 0, TBT 0. Docker was unavailable in the
-verifier container, so the image itself was not run.
-
----
-
-# Tutor Session Trace — repair handoff
+# Tutor Session Trace — repair 2 handoff
 
 Date: 2026-08-27  
-Work order: `tutor-session-trace-repair-1`
+Work order: `tutor-session-trace-repair-2`
 
-## Release blockers repaired
+## Release-blocking repairs
 
-- Recap persistence now uses a product-specific database on the factory's
-  managed PostgreSQL service. The fixed container deployer passes its URL as a
-  Container Apps secret, so recap create/read/delete remains consistent across
-  live replicas and survives revisions/restarts. SQLite remains a local-only
-  development/test fallback.
-- Container builds require a full Git SHA. The binary compiles that immutable
-  SHA into `/health`, and the deployer fails the release if live `/health` does
-  not report the exact SHA it built.
-- Added `Strict-Transport-Security: max-age=31536000; includeSubDomains`.
-- Share-create throttling uses the socket peer supplied by the platform serving
-  layer, never caller-provided `X-Forwarded-For` data.
-- Repaired the four form-event TypeScript errors, added a strict `typecheck`
-  script, and added the Node type package needed for a clean Vite check.
+- Paid 8–30 day student links are now enforced by the backend. Every request
+  above the seven-day free limit must include `X-Sociobot-License`; the server
+  verifies it with the Sociobot product endpoint before inserting a recap.
+  A missing, invalid, expired, revoked, malformed, or unreachable verification
+  result returns `403`; the free seven-day path remains available without a
+  license. The browser passes the locally stored license only for share
+  creation. Its cached paid flag is no longer an authorization boundary.
+- `/privacy`, `/terms`, and `/s/:id` now serve the SPA shell directly with
+  HTTP 200. Unknown paths still receive a true 404.
+- Timeline “Remove” controls are at least 44 × 44 CSS px, including at the
+  390 px mobile breakpoint.
 
-## Exact regressions
+## Regression coverage
 
-- Rust integration tests cover HSTS and a 40-character immutable build SHA,
-  forwarding-header rate-limit bypass attempts, a second independently opened
-  SQLite pool reading and deleting the same recap, and 50 concurrent recap
-  opens.
-- `npm run test:recaps` runs eight consented create/read/status/delete
-  lifecycles. Each lifecycle performs 12 concurrent reads, verifies the open
-  count, deletes the recap, and verifies six post-delete 404 responses. It
-  cleans up every generated recap.
+- Rust integration tests now reject a raw unlicensed 30-day `POST
+  /api/shares`; reject a forged client-only entitlement; and accept a 30-day
+  request only after a local Sociobot-verification stub returns `valid: true`.
+- Rust tests also assert HTTP 200 for the legal/recap client routes and 404 for
+  an unknown route. The suite has 9 passing integration tests.
+- The Playwright product flow now asserts the desktop landing view and verifies
+  that a mobile timeline Remove control measures at least 44 px in both axes.
 
-## Run and verify
+## Verification performed locally
 
 ```bash
-npm ci
-npm run typecheck
-npm test
-npm run build
-cargo fmt --check
-cargo clippy --all-targets -- -D warnings
-cargo build --locked --release
-
-# terminal 1
-cargo run
-# terminal 2
-npm run test:recaps
-npm run test:e2e
-/opt/fleet/lib/verify-url.sh http://127.0.0.1:8080 .factory/evidence
+npm ci                              # 0 vulnerabilities
+npm run typecheck                   # passed
+npm test                            # 2 Vitest + 9 Rust tests passed
+npm run build                       # passed; dist/ produced
+cargo fmt --check                   # passed
+cargo clippy --all-targets -- -D warnings  # passed
+cargo build --locked --release      # passed
 ```
 
-The browser flow runs at 390 × 844, exercises keyboard capture, consented
-sharing and private-note exclusion, and reports zero serious/critical Axe
-violations. `verify-url.sh` captures desktop and mobile checks for title,
-language, main landmark, heading, alt text, labels, and console errors.
+With the release binary serving `dist/` at `http://127.0.0.1:8081`:
 
-For a deployed service, use
-`BASE_URL=https://tutor-session-trace.sociobot.in npm run test:recaps`; confirm `/health` reports the same full SHA as
-`git rev-parse HEAD` and that HSTS is present.
+- `npm run test:recaps` passed all 8 create/read/status/delete lifecycles
+  (12 concurrent reads and 6 post-delete reads per lifecycle).
+- `npm run test:e2e` passed at desktop 1440 × 900 and mobile 390 × 844:
+  keyboard Ctrl/Cmd+Enter capture, consented sharing, private-note exclusion,
+  next-practice visibility, zero console errors, and zero serious/critical Axe
+  violations.
+- `verify-url.sh` passed with title, `lang=en`, one h1, a main landmark, zero
+  missing image alt attributes, zero unlabeled buttons, and zero browser
+  errors. Its captured output is `.factory/evidence/verify.json`.
+- A raw local unlicensed 30-day create returned exactly `403` with “A valid
+  Field guide license is required for links longer than seven days.” Direct
+  `/privacy`, `/terms`, and `/s/abcdefghijklmnopqrstuvwxyz` each returned
+  200; `/not-a-product-route` returned 404.
+- Response-policy inspection confirmed CSP, HSTS, `X-Frame-Options: DENY`,
+  and `Cache-Control: no-cache` for the document. A fresh Playwright context
+  observed only same-origin free-page requests, survived an offline reload,
+  and installed a same-scope service-worker update.
+- The live Sociobot verification endpoint responded to an invalid token with
+  `{"valid":false,"reason":"invalid","expires_at":null}`, confirming the
+  server-side response shape used by the entitlement check.
 
-## Deployment
+The production build is 26.57 kB JS and 16.45 kB CSS before gzip, within the
+product budget. The existing single-mode visual thesis and generated-asset
+provenance in `.factory/design.md` are unchanged.
 
-```bash
-/opt/fleet/lib/deploy-container.sh tutor-session-trace /work/repo Dockerfile 8080
-```
+## Deployment and live retest
 
-The fixed path passes `BUILD_SHA=$(git rev-parse HEAD)`, provisions the
-dedicated PostgreSQL database, injects its URL as a runtime secret, supports
-one to three replicas, and validates the live health build identity before
-declaring success.
+The deployment uses the existing Container App's `database-url` secret and
+`DATABASE_URL` secret reference so the prior shared-PostgreSQL persistence
+repair remains intact. Record the deployed image and post-deploy live checks
+below after the container rollout completes.
 
-## Known gaps / next steps
+## Known gaps
 
-- No product gaps remain from verifier commit
-  `1ffbeefc32c7a8148dc4cfab82063de1aaf642fd`.
-- The existing paid-license checkout still needs its normal factory staging
-  registration to exercise a real purchase/revocation, which is separate from
-  this recap-service repair.
+None. A real paid purchase/revocation remains dependent on normal factory
+billing registration; the backend enforcement itself is covered by the
+Sociobot-shaped verification integration test and must fail closed if that
+service is unavailable.

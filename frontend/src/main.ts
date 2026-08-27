@@ -227,7 +227,10 @@ async function createShare(event: SubmitEvent, session: TraceSession) {
   const button = (event.currentTarget as HTMLFormElement).querySelector('button')!; button.disabled = true; button.textContent = 'Planting link…';
   try {
     const data = new FormData(event.currentTarget as HTMLFormElement);
-    const response = await fetch('/api/shares', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ ...studentRecap(session), consent: true, expires_days: Number(data.get('days')) }) });
+    const license = localStorage.getItem(LICENSE_KEY)?.trim();
+    const headers: Record<string, string> = { 'content-type': 'application/json' };
+    if (license) headers['x-sociobot-license'] = license;
+    const response = await fetch('/api/shares', { method: 'POST', headers, body: JSON.stringify({ ...studentRecap(session), consent: true, expires_days: Number(data.get('days')) }) });
     const result = await response.json(); if (!response.ok) throw new Error(result.error || 'The link could not be created.');
     session.share = { id: result.id, url: `${location.origin}/s/${result.id}`, deleteKey: result.delete_key, expiresAt: result.expires_at, opens: 0 }; save('Student link created.');
   } catch (error) { announce(navigator.onLine ? String((error as Error).message) : 'You are offline. Your local notes are safe; try sharing when reconnected.'); render(); }
