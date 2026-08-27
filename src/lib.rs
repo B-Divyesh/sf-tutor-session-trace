@@ -1,5 +1,6 @@
 use std::{
     collections::HashMap,
+    net::SocketAddr,
     path::PathBuf,
     sync::Arc,
     time::{Duration, Instant},
@@ -7,8 +8,8 @@ use std::{
 
 use axum::{
     body::Body,
-    extract::{DefaultBodyLimit, Path, Query, State},
-    http::{header, HeaderMap, HeaderName, HeaderValue, Request, StatusCode},
+    extract::{connect_info::ConnectInfo, DefaultBodyLimit, Path, Query, State},
+    http::{header, HeaderName, HeaderValue, Request, StatusCode},
     middleware::{self, Next},
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -31,6 +32,8 @@ pub struct AppState {
     pub pool: SqlitePool,
     attempts: Arc<Mutex<HashMap<String, (Instant, u32)>>>,
 }
+
+const BUILD_SHA: &str = env!("BUILD_SHA");
 
 impl AppState {
     pub fn new(pool: SqlitePool) -> Self {
@@ -113,15 +116,15 @@ fn error(status: StatusCode, message: impl Into<String>) -> (StatusCode, Json<Er
 }
 
 async fn health() -> Json<Value> {
-    Json(json!({ "status": "ok", "build": option_env!("BUILD_SHA").unwrap_or("dev") }))
+    Json(json!({ "status": "ok", "build": BUILD_SHA }))
 }
 
 async fn create_share(
     State(state): State<AppState>,
-    headers: HeaderMap,
+    ConnectInfo(client): ConnectInfo<SocketAddr>,
     Json(payload): Json<CreateShare>,
 ) -> Result<impl IntoResponse, (StatusCode, Json<ErrorBody>)> {
-    rate_limit(&state, &headers).await?;
+    rate_limit(&state, client).await?;
     validate(&payload)?;
 
     let now = Utc::now();
@@ -339,15 +342,12 @@ fn validate(payload: &CreateShare) -> Result<(), (StatusCode, Json<ErrorBody>)> 
 
 async fn rate_limit(
     state: &AppState,
-    headers: &HeaderMap,
+    client: SocketAddr,
 ) -> Result<(), (StatusCode, Json<ErrorBody>)> {
-    let key = headers
-        .get("x-forwarded-for")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|v| v.split(',').next())
-        .unwrap_or("local")
-        .trim()
-        .to_string();
+    // The peer address comes from the serving socket (Azure's ingress proxy),
+    // not a caller-controlled forwarding header. Container Apps never exposes
+    // this listener directly, so callers cannot choose a new limiter identity.
+    let key = client.ip().to_string();
     let mut attempts = state.attempts.lock().await;
     let entry = attempts.entry(key).or_insert((Instant::now(), 0));
     if entry.0.elapsed() > Duration::from_secs(60) {
@@ -392,6 +392,10 @@ async fn security_headers(request: Request<Body>, next: Next) -> Response {
     headers.insert(
         header::REFERRER_POLICY,
         HeaderValue::from_static("no-referrer"),
+    );
+    headers.insert(
+        header::STRICT_TRANSPORT_SECURITY,
+        HeaderValue::from_static("max-age=31536000; includeSubDomains"),
     );
     headers.insert(header::CONTENT_SECURITY_POLICY, HeaderValue::from_static("default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; connect-src 'self' https://api.sociobot.in; frame-ancestors 'none'; base-uri 'self'; form-action 'self' https://api.sociobot.in"));
     headers.insert(

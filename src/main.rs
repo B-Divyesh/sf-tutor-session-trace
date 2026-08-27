@@ -1,6 +1,6 @@
-use std::{env, net::SocketAddr, path::PathBuf};
+use std::{env, net::SocketAddr, path::PathBuf, time::Duration};
 
-use sqlx::{sqlite::SqliteConnectOptions, SqlitePool};
+use sqlx::{sqlite::SqliteConnectOptions, sqlite::SqlitePoolOptions};
 use tokio::net::TcpListener;
 use tracing::{info, warn};
 use tracing_subscriber::EnvFilter;
@@ -24,7 +24,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .parse::<SqliteConnectOptions>()?
         .create_if_missing(true)
         .foreign_keys(true);
-    let pool = SqlitePool::connect_with(options).await?;
+    // This deployment is deliberately one replica backed by a durable mounted
+    // volume. A single connection keeps SQLite's locking local and predictable.
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .acquire_timeout(Duration::from_secs(10))
+        .connect_with(options)
+        .await?;
     sqlx::migrate!().run(&pool).await?;
     let removed = cleanup_expired(&pool).await?;
     if removed > 0 {
@@ -36,9 +42,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let address = SocketAddr::from(([0, 0, 0, 0], port));
     let listener = TcpListener::bind(address).await?;
     info!(%address, "Tutor Session Trace listening");
-    axum::serve(listener, router)
-        .with_graceful_shutdown(shutdown())
-        .await?;
+    axum::serve(
+        listener,
+        router.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown())
+    .await?;
     Ok(())
 }
 

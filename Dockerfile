@@ -7,11 +7,12 @@ RUN npm ci && npm run build
 FROM rust:1.98-bookworm AS backend
 WORKDIR /build
 COPY Cargo.toml Cargo.lock ./
+COPY build.rs ./
 COPY migrations ./migrations
 COPY src ./src
-ARG BUILD_SHA=container
+ARG BUILD_SHA
 ENV BUILD_SHA=$BUILD_SHA
-RUN cargo build --locked --release
+RUN test -n "$BUILD_SHA" && cargo build --locked --release
 
 FROM debian:bookworm-slim AS runtime
 RUN groupadd --system trace && useradd --system --gid trace --home-dir /app trace \

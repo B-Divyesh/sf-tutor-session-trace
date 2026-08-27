@@ -38,10 +38,15 @@ Configuration is environment-only:
 | `FRONTEND_DIR` | `dist` | Built frontend directory |
 | `RUST_LOG` | `info,tower_http=info` | Structured log filter |
 
+`/health` reports the full immutable Git commit SHA compiled into the binary.
+The production container build requires that SHA as a build argument; it does
+not use a mutable image label or a runtime default.
+
 ## Test and verify
 
 ```bash
 npm test                  # Vitest privacy/export tests + Rust integration tests
+npm run typecheck
 npm run build
 cargo fmt --check
 cargo clippy --all-targets -- -D warnings
@@ -49,7 +54,14 @@ cargo clippy --all-targets -- -D warnings
 
 With the built server running, install Chromium once with `npx playwright install chromium` and run `npm run test:e2e` for the 390 px keyboard/share flow and Axe checks.
 
-The backend tests exercise consent rejection, private-field rejection, create/open/count/revoke, health, and security headers. A simple local load smoke after starting the server is:
+Run `npm run test:recaps` against the local server (or set `BASE_URL` to a
+deployed origin) to execute eight create/read/status/delete lifecycles with
+concurrent reads. It leaves no recap records behind.
+
+The backend tests exercise consent rejection, private-field rejection,
+create/open/count/revoke, durable reopen consistency, concurrent recap opens,
+the immutable health identity, HSTS, and resistance to spoofed forwarding
+headers in rate limiting. A simple local load smoke after starting the server is:
 
 ```bash
 seq 1 500 | xargs -P 20 -I{} curl -fsS http://localhost:8080/health >/dev/null
@@ -58,11 +70,16 @@ seq 1 500 | xargs -P 20 -I{} curl -fsS http://localhost:8080/health >/dev/null
 ## Container
 
 ```bash
-docker build --build-arg BUILD_SHA="$(git rev-parse --short HEAD)" -t tutor-session-trace .
+docker build --build-arg BUILD_SHA="$(git rev-parse HEAD)" -t tutor-session-trace .
 docker run --rm -p 8080:8080 -v trace-data:/data tutor-session-trace
 ```
 
-The multi-stage image runs as the unprivileged `trace` user. Persist `/data`; TLS and public routing belong at the deployment layer.
+The multi-stage image runs as the unprivileged `trace` user. The factory
+container deployment provisions an Azure Files share at `/data` and pins the
+app to one always-on replica: this is the supported persistence boundary for
+SQLite and prevents separate replicas from serving separate recap databases.
+The deployment helper verifies that live `/health` reports the exact committed
+SHA it built. TLS and public routing belong at the deployment layer.
 
 ## Privacy and limits
 

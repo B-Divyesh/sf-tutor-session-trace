@@ -1,8 +1,14 @@
-use std::path::PathBuf;
+use std::{
+    net::SocketAddr,
+    path::PathBuf,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 use axum::{
     body::Body,
+    extract::connect_info::ConnectInfo,
     http::{Request, StatusCode},
+    Extension,
 };
 use http_body_util::BodyExt;
 use serde_json::{json, Value};
@@ -17,7 +23,9 @@ async fn test_app() -> axum::Router {
         .await
         .unwrap();
     sqlx::migrate!().run(&pool).await.unwrap();
-    app(AppState::new(pool), PathBuf::from("dist"))
+    app(AppState::new(pool), PathBuf::from("dist")).layer(Extension(ConnectInfo(
+        "203.0.113.10:443".parse::<SocketAddr>().unwrap(),
+    )))
 }
 
 fn valid_payload() -> Value {
@@ -148,5 +156,162 @@ async fn health_includes_build_identity_and_security_headers() {
         .unwrap();
     assert_eq!(response.status(), StatusCode::OK);
     assert_eq!(response.headers()["x-content-type-options"], "nosniff");
-    assert_eq!(json_body(response).await["status"], "ok");
+    assert_eq!(
+        response.headers()["strict-transport-security"],
+        "max-age=31536000; includeSubDomains"
+    );
+    let health = json_body(response).await;
+    assert_eq!(health["status"], "ok");
+    let build = health["build"].as_str().unwrap();
+    assert_eq!(build.len(), 40);
+    assert!(build.bytes().all(|byte| byte.is_ascii_hexdigit()));
+}
+
+#[tokio::test]
+async fn forwarded_headers_cannot_bypass_the_peer_rate_limit() {
+    let service = test_app().await;
+    for request_number in 0..20 {
+        let response = service
+            .clone()
+            .oneshot(
+                Request::post("/api/shares")
+                    .header("content-type", "application/json")
+                    .header("x-forwarded-for", format!("198.51.100.{request_number}"))
+                    .body(Body::from(valid_payload().to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::CREATED);
+    }
+
+    let blocked = service
+        .oneshot(
+            Request::post("/api/shares")
+                .header("content-type", "application/json")
+                .header("x-forwarded-for", "203.0.113.250")
+                .body(Body::from(valid_payload().to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(blocked.status(), StatusCode::TOO_MANY_REQUESTS);
+}
+
+async fn durable_app(database_url: &str, peer: &str) -> axum::Router {
+    let options = database_url
+        .parse::<sqlx::sqlite::SqliteConnectOptions>()
+        .unwrap()
+        .create_if_missing(true);
+    let pool = SqlitePoolOptions::new()
+        .max_connections(1)
+        .connect_with(options)
+        .await
+        .unwrap();
+    sqlx::migrate!().run(&pool).await.unwrap();
+    app(AppState::new(pool), PathBuf::from("dist"))
+        .layer(Extension(ConnectInfo(peer.parse::<SocketAddr>().unwrap())))
+}
+
+#[tokio::test]
+async fn durable_database_keeps_recaps_consistent_between_instances_and_after_delete() {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let path = std::env::temp_dir().join(format!("tutor-session-trace-{nonce}.db"));
+    let database_url = format!("sqlite://{}", path.display());
+    let first = durable_app(&database_url, "203.0.113.21:443").await;
+
+    let created = first
+        .clone()
+        .oneshot(
+            Request::post("/api/shares")
+                .header("content-type", "application/json")
+                .body(Body::from(valid_payload().to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(created.status(), StatusCode::CREATED);
+    let created = json_body(created).await;
+    let id = created["id"].as_str().unwrap().to_owned();
+    let key = created["delete_key"].as_str().unwrap().to_owned();
+
+    // A separately opened pool models a restarted process reading the same
+    // durable volume. Both services must see exactly the same recap.
+    let second = durable_app(&database_url, "203.0.113.22:443").await;
+    for service in [&first, &second, &first, &second] {
+        let response = service
+            .clone()
+            .oneshot(
+                Request::get(format!("/api/shares/{id}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    let deleted = second
+        .clone()
+        .oneshot(
+            Request::delete(format!("/api/shares/{id}?key={key}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(deleted.status(), StatusCode::NO_CONTENT);
+    for service in [&first, &second] {
+        let response = service
+            .clone()
+            .oneshot(
+                Request::get(format!("/api/shares/{id}"))
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+    drop((first, second));
+    let _ = std::fs::remove_file(path);
+}
+
+#[tokio::test]
+async fn concurrent_opens_of_one_recap_are_all_consistent() {
+    let service = test_app().await;
+    let created = service
+        .clone()
+        .oneshot(
+            Request::post("/api/shares")
+                .header("content-type", "application/json")
+                .body(Body::from(valid_payload().to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let id = json_body(created).await["id"].as_str().unwrap().to_owned();
+
+    let mut opens = tokio::task::JoinSet::new();
+    for _ in 0..50 {
+        let service = service.clone();
+        let id = id.clone();
+        opens.spawn(async move {
+            service
+                .oneshot(
+                    Request::get(format!("/api/shares/{id}"))
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap()
+                .status()
+        });
+    }
+    while let Some(result) = opens.join_next().await {
+        assert_eq!(result.unwrap(), StatusCode::OK);
+    }
 }

@@ -6,13 +6,16 @@
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run && cargo test",
     "test:frontend": "vitest run",
     "test:e2e": "node scripts/e2e.mjs",
+    "test:recaps": "node scripts/recap-consistency.mjs",
     "preview": "vite preview --host 0.0.0.0"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
+    "@types/node": "^22.20.1",
     "playwright": "^1.62.1",
     "typescript": "^5.9.2",
     "vite": "^7.1.3",

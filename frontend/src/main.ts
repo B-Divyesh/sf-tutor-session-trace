@@ -166,7 +166,7 @@ function bindCommon() {
   document.querySelectorAll<HTMLElement>('[data-settings]').forEach(button => button.addEventListener('click', () => (document.querySelector<HTMLDialogElement>('#settings')?.showModal())));
   document.querySelector<HTMLFormElement>('[data-license-form]')?.addEventListener('submit', event => {
     event.preventDefault();
-    const data = new FormData(event.currentTarget);
+    const data = new FormData(event.currentTarget as HTMLFormElement);
     localStorage.setItem(LICENSE_KEY, String(data.get('license')).trim());
     localStorage.removeItem(VERDICT_KEY);
     (document.querySelector<HTMLDialogElement>('#settings'))?.close();
@@ -178,7 +178,7 @@ function bindNotebook(active?: TraceSession) {
   document.querySelector<HTMLFormElement>('[data-new-session]')?.addEventListener('submit', event => {
     event.preventDefault();
     if (!paid && store.sessions.length >= 5) return;
-    const data = new FormData(event.currentTarget);
+    const data = new FormData(event.currentTarget as HTMLFormElement);
     const session: TraceSession = { id: newId(), student: String(data.get('student')).trim(), topic: String(data.get('topic')).trim(), date: String(data.get('date')), createdAt: new Date().toISOString(), summary: '', consent: false, moments: [], tasks: [] };
     store.sessions.unshift(session); store.activeId = session.id; save('Session page opened.');
   });
@@ -195,7 +195,7 @@ function bindNotebook(active?: TraceSession) {
   const momentForm = document.querySelector<HTMLFormElement>('[data-moment-form]');
   momentForm?.addEventListener('keydown', event => { if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) momentForm.requestSubmit(); });
   momentForm?.addEventListener('submit', event => {
-    event.preventDefault(); const data = new FormData(event.currentTarget);
+    event.preventDefault(); const data = new FormData(event.currentTarget as HTMLFormElement);
     const attachmentType = String(data.get('attachmentType')) as '' | 'link' | 'code'; const attachmentValue = String(data.get('attachment')).trim();
     if (attachmentType === 'link' && !safeLink(attachmentValue)) { announce('Use a complete http:// or https:// link.'); render(); return; }
     active.moments.unshift({ id: newId(), at: new Date().toISOString(), kind: String(data.get('kind')) as never, outcome: String(data.get('outcome')) as never, note: String(data.get('note')).trim(), attachment: attachmentType && attachmentValue ? { type: attachmentType, value: attachmentValue } : undefined, private: data.get('private') === 'on' });
@@ -206,7 +206,7 @@ function bindNotebook(active?: TraceSession) {
     if (item && confirm(`Remove this ${item.kind}: “${item.note.slice(0, 60)}”?`)) { active.moments = active.moments.filter(moment => moment.id !== item.id); save('Moment removed.'); }
   }));
   document.querySelector<HTMLTextAreaElement>('[data-summary]')?.addEventListener('change', event => { active.summary = (event.target as HTMLTextAreaElement).value; save('Recap note saved.'); });
-  document.querySelector<HTMLFormElement>('[data-task-form]')?.addEventListener('submit', event => { event.preventDefault(); const data = new FormData(event.currentTarget); active.tasks.push({ id: newId(), text: String(data.get('task')).trim(), done: false }); save('Next practice added.'); });
+  document.querySelector<HTMLFormElement>('[data-task-form]')?.addEventListener('submit', event => { event.preventDefault(); const data = new FormData(event.currentTarget as HTMLFormElement); active.tasks.push({ id: newId(), text: String(data.get('task')).trim(), done: false }); save('Next practice added.'); });
   document.querySelectorAll<HTMLInputElement>('[data-task-done]').forEach(box => box.addEventListener('change', () => { const task = active.tasks.find(item => item.id === box.dataset.taskDone); if (task) task.done = box.checked; save(box.checked ? 'Practice marked complete.' : 'Practice marked open.'); }));
   document.querySelectorAll<HTMLButtonElement>('[data-delete-task]').forEach(button => button.addEventListener('click', () => { active.tasks = active.tasks.filter(item => item.id !== button.dataset.deleteTask); save('Practice item removed.'); }));
   document.querySelector<HTMLInputElement>('[data-consent]')?.addEventListener('change', event => { active.consent = (event.target as HTMLInputElement).checked; save(active.consent ? 'Consent recorded.' : 'Consent removed. Existing links remain until deleted.'); });
