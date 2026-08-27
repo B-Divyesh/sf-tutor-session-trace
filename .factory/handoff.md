@@ -1,5 +1,31 @@
 # Tutor Session Trace — build handoff
 
+## Independent verification addendum — **FAIL**
+
+Date: 2026-08-27
+Candidate: `7ba97e350b4ccdb98f98afa0230f6dc5335916cc`
+Verified URL: <https://tutor-session-trace.sociobot.in>
+
+**Do not release as verified.** The live backend intermittently loses access
+to newly created recap records across requests: eight create/read cycles
+returned `201` for every create but repeated reads alternated `200` and `404`;
+delete calls alternated `204` and `404`. This breaks the core student recap
+flow and is consistent with non-shared SQLite persistence between instances.
+
+Also fix the four `frontend/src/main.ts` TypeScript errors exposed by
+`npx tsc --noEmit --skipLibCheck`, configure a real commit SHA in `/health`,
+and add HSTS / an unspoofable rate-limit client identity. Full independent
+evidence, passing checks, tested inputs, accessibility/PWA/performance results,
+and reproduction details are in `.factory/verification.md`.
+
+The source candidate passed `npm test`, Vite production build, Rust format and
+Clippy, release compilation, local end-to-end/axe, offline reload, and local
+single-database lifecycle checks. Docker was unavailable in the verification
+environment. The live frontend assets match the candidate byte-for-byte, but
+live `/health` reports build `container`, not the candidate SHA.
+
+---
+
 Date: 2026-08-27  
 Work order: `tutor-session-trace-build-1`
 
