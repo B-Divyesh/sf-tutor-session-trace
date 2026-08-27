@@ -1,0 +1,9 @@
+.git
+.factory
+assets/src
+node_modules
+target
+dist
+data
+*.db
+.env
