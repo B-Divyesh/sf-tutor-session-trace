@@ -1,96 +1,121 @@
-# Tutor Session Trace — repair 2 handoff
+# Tutor Session Trace — repair 3 handoff
 
-Date: 2026-08-27  
-Work order: `tutor-session-trace-repair-2`
+Date: 2026-08-28
 
-## Release-blocking repairs
+Work order: `tutor-session-trace-repair-3`
 
-- Paid 8–30 day student links are now enforced by the backend. Every request
-  above the seven-day free limit must include `X-Sociobot-License`; the server
-  verifies it with the Sociobot product endpoint before inserting a recap.
-  A missing, invalid, expired, revoked, malformed, or unreachable verification
-  result returns `403`; the free seven-day path remains available without a
-  license. The browser passes the locally stored license only for share
-  creation. Its cached paid flag is no longer an authorization boundary.
-- `/privacy`, `/terms`, and `/s/:id` now serve the SPA shell directly with
-  HTTP 200. Unknown paths still receive a true 404.
-- Timeline “Remove” controls are at least 44 × 44 CSS px, including at the
-  390 px mobile breakpoint.
+Repair commit: `76b51d8e46032931035429231da6c63a8e7e5a74`
 
-## Regression coverage
+## Outcome
 
-- Rust integration tests now reject a raw unlicensed 30-day `POST
-  /api/shares`; reject a forged client-only entitlement; and accept a 30-day
-  request only after a local Sociobot-verification stub returns `valid: true`.
-- Rust tests also assert HTTP 200 for the legal/recap client routes and 404 for
-  an unknown route. The suite has 9 passing integration tests.
-- The Playwright product flow now asserts the desktop landing view and verifies
-  that a mobile timeline Remove control measures at least 44 px in both axes.
+The source-tarball container build and deployed identity contract are repaired.
+`Dockerfile` declares `ARG BUILD_SHA=dev` before its stages, consumes it in the
+backend build, normalizes an explicitly empty value to `dev`, and consumes it
+again as the runtime OCI revision label. The Rust build script no longer calls
+Git or reads `.git`; it accepts `dev` for local builds and validates supplied
+release identities as full 40-character hexadecimal SHAs. `/health` returns the
+identity compiled into the binary.
 
-## Verification performed locally
+The runtime remains a multi-stage, non-root (`trace`) container serving the
+Vite frontend and Axum/SQLx backend on `PORT`. The artifact remains
+`web-with-backend`, deployed as an Azure Container App.
 
-```bash
-npm ci                              # 0 vulnerabilities
-npm run typecheck                   # passed
-npm test                            # 2 Vitest + 9 Rust tests passed
-npm run build                       # passed; dist/ produced
-cargo fmt --check                   # passed
-cargo clippy --all-targets -- -D warnings  # passed
-cargo build --locked --release      # passed
+## Failure reproduction and regression
+
+The original Dockerfile was sent to ACR without build arguments, exactly as a
+clean source archive. ACR explicitly reported that `.git` was excluded, then
+run `chaj` failed at:
+
+```text
+Step 14/24 : RUN test -n "$BUILD_SHA" && cargo build --locked --release
+The command ... returned a non-zero code: 1
 ```
 
-With the release binary serving `dist/` at `http://127.0.0.1:8081`:
+After the repair, the same no-argument command succeeded as run `chb2` and
+pushed `sf-tutor-session-trace:default-arg-regression` with digest
+`sha256:b263a774168d730e520b502d97960b42e28f9555ccb9ba1519324c0831e7ef98`.
 
-- `npm run test:recaps` passed all 8 create/read/status/delete lifecycles
-  (12 concurrent reads and 6 post-delete reads per lifecycle).
-- `npm run test:e2e` passed at desktop 1440 × 900 and mobile 390 × 844:
-  keyboard Ctrl/Cmd+Enter capture, consented sharing, private-note exclusion,
-  next-practice visibility, zero console errors, and zero serious/critical Axe
-  violations.
-- `verify-url.sh` passed with title, `lang=en`, one h1, a main landmark, zero
-  missing image alt attributes, zero unlabeled buttons, and zero browser
-  errors. Its captured output is `.factory/evidence/verify.json`.
-- A raw local unlicensed 30-day create returned exactly `403` with “A valid
-  Field guide license is required for links longer than seven days.” Direct
-  `/privacy`, `/terms`, and `/s/abcdefghijklmnopqrstuvwxyz` each returned
-  200; `/not-a-product-route` returned 404.
-- Response-policy inspection confirmed CSP, HSTS, `X-Frame-Options: DENY`,
-  and `Cache-Control: no-cache` for the document. A fresh Playwright context
-  observed only same-origin free-page requests, survived an offline reload,
-  and installed a same-scope service-worker update.
-- The live Sociobot verification endpoint responded to an invalid token with
-  `{"valid":false,"reason":"invalid","expires_at":null}`, confirming the
-  server-side response shape used by the entitlement check.
+`npm run test:container-contract` now guards the global default, backend and
+runtime ARG consumption, empty-argument normalization, runtime OCI label, and
+absence of Git access. The health integration test compares the response to
+the exact compile-time identity. Separate omitted- and empty-`BUILD_SHA` test
+builds both passed; the ordinary `npm test` build used
+`0123456789abcdef0123456789abcdef01234567` and returned it exactly.
 
-The production build is 26.57 kB JS and 16.45 kB CSS before gzip, within the
-product budget. The existing single-mode visual thesis and generated-asset
-provenance in `.factory/design.md` are unchanged.
+## Clean build and verification evidence
 
-## Deployment and live retest
+The following passed on the repaired tree:
 
-The repair image `sociobotregistry.azurecr.io/sf-tutor-session-trace:bf4745d0c2bc`
-was built by Azure Container Registry and deployed by updating only the existing
-Container App image. Its `database-url` secret and `DATABASE_URL` secret
-reference were retained, preserving the prior shared-PostgreSQL persistence
-repair. Live `/health` returned the full immutable repair SHA
-`bf4745d0c2bc29ce42733e37b30148cd1906eea4`.
+```bash
+npm ci                                      # 0 vulnerabilities
+npm run typecheck                           # passed
+npm test                                    # 2 Vitest + contract + 9 Rust tests
+npm run build                               # dist/ produced
+cargo fmt --check                           # passed
+cargo clippy --all-targets -- -D warnings   # passed
+env -u BUILD_SHA cargo test health_includes_build_identity_and_security_headers --test shares
+BUILD_SHA= cargo test health_includes_build_identity_and_security_headers --test shares
+BUILD_SHA=b8effbe5ce8aae0ef10c95835fbc0d50cae664fe cargo build --locked --release
+```
 
-- A fresh unauthenticated live 30-day `POST /api/shares` returned `403` with
-  the paid-license error.
-- Live `/privacy`, `/terms`, and a recap route returned 200; an unknown route
-  returned 404. Live responses retained CSP, HSTS, frame denial, and no-cache
-  HTML policy.
-- `BASE_URL=https://tutor-session-trace.sociobot.in npm run test:recaps`
-  passed all 8 concurrent lifecycles. The same-origin live `npm run test:e2e`
-  passed desktop and 390 px mobile keyboard/consent/recap/Axe checks with zero
-  console errors.
-- Fresh live browser checks confirmed same-origin free-page traffic, offline
-  service-worker reload, and service-worker update activation. `verify-url.sh`
-  passed live; `.factory/evidence/verify.json` captures that result.
+The release binary was started from a scrubbed environment containing only
+`PATH` and `PORT=8081`. It listened successfully and `/health` returned the
+full supplied SHA. Against that process:
+
+- Eight recap create/read/status/delete lifecycles passed, each with 12
+  concurrent reads and six post-delete reads.
+- The Playwright desktop and 390 × 844 mobile flow passed session creation,
+  Ctrl/Cmd+Enter capture, 44 px removal target, consented sharing, private-note
+  exclusion, student practice visibility, and zero console errors.
+- Axe found zero serious or critical violations in the workspace and recap.
+- The platform check passed visible 3 px keyboard focus, reduced motion,
+  consent unchecked by default, same-origin-only free traffic, service-worker
+  update activation, offline reload, and `/privacy` and `/terms`.
+- `verify-url.sh` passed title, `lang=en`, one h1, main landmark, alt text,
+  button labels, and console checks. Evidence is in `.factory/evidence/`.
+- Local mobile Lighthouse 12.8.2 scored Performance 100, Accessibility 100,
+  Best Practices 100, and SEO 100; LCP was 1,502 ms, CLS 0, and TBT 28 ms.
+- Built assets are 26.57 kB JavaScript and 16.45 kB CSS before gzip.
+
+## Release build, deployment, and live checks
+
+After the repair commit was pushed to `origin/main`, the exact factory clean
+build form was run with all three source identity arguments:
+
+```bash
+az acr build --registry sociobotregistry \
+  --image sf-tutor-session-trace:76b51d8e4603 \
+  --file Dockerfile \
+  --build-arg BUILD_SHA=76b51d8e46032931035429231da6c63a8e7e5a74 \
+  --build-arg GIT_SHA=76b51d8e46032931035429231da6c63a8e7e5a74 \
+  --build-arg SOURCE_COMMIT=76b51d8e46032931035429231da6c63a8e7e5a74 .
+```
+
+ACR run `chba` succeeded with `.git` excluded and produced image digest
+`sha256:4677c5fd16a3e5cd7d8b6522c7085156bf0cfe69be0f09d8a156e35ccb4d5cee`.
+The image was deployed on port 8080 while retaining the existing managed
+PostgreSQL secret reference. Live `/health` repeatedly returned:
+
+```json
+{"build":"76b51d8e46032931035429231da6c63a8e7e5a74","status":"ok"}
+```
+
+All local browser/API checks above were repeated against
+`https://tutor-session-trace.sociobot.in` and passed. Additional live evidence:
+
+- 500 health requests at concurrency 20 passed; the measured run completed at
+  1,384.6 requests/second.
+- Twelve repeated identity responses were identical to the repair SHA.
+- An unauthenticated 30-day share request returned `403` with the license
+  error; legal and recap shell routes returned 200 and an unknown route 404.
+- CSP, HSTS, `X-Frame-Options: DENY`, `nosniff`, and no-cache HTML policy remain
+  present.
+- The deployed configuration points to the immutable image tag, target port
+  8080, and the pre-existing shared-database secret, so recap durability across
+  replicas was not regressed.
 
 ## Known gaps
 
-None. A real paid purchase/revocation remains dependent on normal factory
-billing registration; the backend enforcement itself is covered by the
-Sociobot-shaped verification integration test and must fail closed if that
-service is unavailable.
+None in the repaired build/deploy contract. A real paid purchase and revocation
+still depend on the factory-managed Sociobot billing registration; invalid and
+missing-license behavior is covered locally and live.
