@@ -1,121 +1,61 @@
-# Tutor Session Trace — repair 3 handoff
+# Tutor Session Trace — verification 3 handoff
 
 Date: 2026-08-28
 
-Work order: `tutor-session-trace-repair-3`
+Work order: `tutor-session-trace-verify-3`
 
-Repair commit: `76b51d8e46032931035429231da6c63a8e7e5a74`
+Candidate: `fcfe31b7fd011ae668602170ade119462185932e`
+Live URL: <https://tutor-session-trace.sociobot.in>
 
-## Outcome
+## Outcome: FAIL
 
-The source-tarball container build and deployed identity contract are repaired.
-`Dockerfile` declares `ARG BUILD_SHA=dev` before its stages, consumes it in the
-backend build, normalizes an explicitly empty value to `dev`, and consumes it
-again as the runtime OCI revision label. The Rust build script no longer calls
-Git or reads `.git`; it accepts `dev` for local builds and validates supplied
-release identities as full 40-character hexadecimal SHAs. `/health` returns the
-identity compiled into the binary.
+The live deployment is the candidate and the previous build-identity,
+persistence, legal-route, paid-expiry authorization, rate-limit, and 44 px
+Remove-control repairs all passed fresh verification. Release acceptance still
+fails for two P1 defects:
 
-The runtime remains a multi-stage, non-root (`trace`) container serving the
-Vite frontend and Axum/SQLx backend on `PORT`. The artifact remains
-`web-with-backend`, deployed as an Azure Container App.
+1. `Print / PDF` includes tutor-only moments, contrary to the documented
+   privacy/export promise.
+2. The live `$19` Sociobot checkout endpoint returns HTTP 404, so new customers
+   cannot buy the advertised unlock.
 
-## Failure reproduction and regression
+Four P2 defects also remain: malformed-link validation clears the entire
+in-progress observation; the manifest lacks a suitable install icon; an
+offline reload of a valid student recap says `Failed to fetch` and asks for a
+new link; and the 390 px footer Privacy/Terms targets are only 24 px high.
 
-The original Dockerfile was sent to ACR without build arguments, exactly as a
-clean source archive. ACR explicitly reported that `.git` was excluded, then
-run `chaj` failed at:
+Full reproduction evidence, passing checks, metrics, limitations, and retest
+steps are in [`.factory/verification-3.md`](verification-3.md).
 
-```text
-Step 14/24 : RUN test -n "$BUILD_SHA" && cargo build --locked --release
-The command ... returned a non-zero code: 1
-```
+## Verification summary
 
-After the repair, the same no-argument command succeeded as run `chb2` and
-pushed `sf-tutor-session-trace:default-arg-regression` with digest
-`sha256:b263a774168d730e520b502d97960b42e28f9555ccb9ba1519324c0831e7ef98`.
+- Clean checkout exactly matched the candidate before testing; no product code
+  was modified.
+- `npm ci`, audit, typecheck, `npm test`, production Vite build, Rust format,
+  clippy, and candidate-SHA release build passed.
+- Local and live E2E, platform/PWA shell, and 8-cycle concurrent recap suites
+  passed.
+- The release binary started with only `PORT`, survived restart with durable
+  recap data, enforced validation/body/rate limits, and returned the candidate
+  build identity.
+- Live assets byte-match the local production build; 12/12 health identity
+  reads returned the candidate SHA.
+- Axe serious/critical findings: 0. Normal-flow console/page errors: 0.
+- Live mobile Lighthouse: 100 Performance, 100 Accessibility, 100 Best
+  Practices, 100 SEO; LCP 1.351 s, CLS 0, TBT 0.
+- Live health load: 77,477/77,477 HTTP 200 responses at 20 connections,
+  averaging 7,043.82 requests/second.
+- Security headers, HTTPS redirect, caching policy, privacy defaults,
+  same-origin free traffic, and server-side paid-expiry enforcement passed.
 
-`npm run test:container-contract` now guards the global default, backend and
-runtime ARG consumption, empty-argument normalization, runtime OCI label, and
-absence of Git access. The health integration test compares the response to
-the exact compile-time identity. Separate omitted- and empty-`BUILD_SHA` test
-builds both passed; the ordinary `npm test` build used
-`0123456789abcdef0123456789abcdef01234567` and returned it exactly.
+Docker was unavailable in the verifier image, so the container was not rebuilt
+locally. The repository's container contract passed, the exact release binary
+and frontend were built, and the live binary/assets independently prove the
+candidate identity.
 
-## Clean build and verification evidence
+## Required next steps
 
-The following passed on the repaired tree:
-
-```bash
-npm ci                                      # 0 vulnerabilities
-npm run typecheck                           # passed
-npm test                                    # 2 Vitest + contract + 9 Rust tests
-npm run build                               # dist/ produced
-cargo fmt --check                           # passed
-cargo clippy --all-targets -- -D warnings   # passed
-env -u BUILD_SHA cargo test health_includes_build_identity_and_security_headers --test shares
-BUILD_SHA= cargo test health_includes_build_identity_and_security_headers --test shares
-BUILD_SHA=b8effbe5ce8aae0ef10c95835fbc0d50cae664fe cargo build --locked --release
-```
-
-The release binary was started from a scrubbed environment containing only
-`PATH` and `PORT=8081`. It listened successfully and `/health` returned the
-full supplied SHA. Against that process:
-
-- Eight recap create/read/status/delete lifecycles passed, each with 12
-  concurrent reads and six post-delete reads.
-- The Playwright desktop and 390 × 844 mobile flow passed session creation,
-  Ctrl/Cmd+Enter capture, 44 px removal target, consented sharing, private-note
-  exclusion, student practice visibility, and zero console errors.
-- Axe found zero serious or critical violations in the workspace and recap.
-- The platform check passed visible 3 px keyboard focus, reduced motion,
-  consent unchecked by default, same-origin-only free traffic, service-worker
-  update activation, offline reload, and `/privacy` and `/terms`.
-- `verify-url.sh` passed title, `lang=en`, one h1, main landmark, alt text,
-  button labels, and console checks. Evidence is in `.factory/evidence/`.
-- Local mobile Lighthouse 12.8.2 scored Performance 100, Accessibility 100,
-  Best Practices 100, and SEO 100; LCP was 1,502 ms, CLS 0, and TBT 28 ms.
-- Built assets are 26.57 kB JavaScript and 16.45 kB CSS before gzip.
-
-## Release build, deployment, and live checks
-
-After the repair commit was pushed to `origin/main`, the exact factory clean
-build form was run with all three source identity arguments:
-
-```bash
-az acr build --registry sociobotregistry \
-  --image sf-tutor-session-trace:76b51d8e4603 \
-  --file Dockerfile \
-  --build-arg BUILD_SHA=76b51d8e46032931035429231da6c63a8e7e5a74 \
-  --build-arg GIT_SHA=76b51d8e46032931035429231da6c63a8e7e5a74 \
-  --build-arg SOURCE_COMMIT=76b51d8e46032931035429231da6c63a8e7e5a74 .
-```
-
-ACR run `chba` succeeded with `.git` excluded and produced image digest
-`sha256:4677c5fd16a3e5cd7d8b6522c7085156bf0cfe69be0f09d8a156e35ccb4d5cee`.
-The image was deployed on port 8080 while retaining the existing managed
-PostgreSQL secret reference. Live `/health` repeatedly returned:
-
-```json
-{"build":"76b51d8e46032931035429231da6c63a8e7e5a74","status":"ok"}
-```
-
-All local browser/API checks above were repeated against
-`https://tutor-session-trace.sociobot.in` and passed. Additional live evidence:
-
-- 500 health requests at concurrency 20 passed; the measured run completed at
-  1,384.6 requests/second.
-- Twelve repeated identity responses were identical to the repair SHA.
-- An unauthenticated 30-day share request returned `403` with the license
-  error; legal and recap shell routes returned 200 and an unknown route 404.
-- CSP, HSTS, `X-Frame-Options: DENY`, `nosniff`, and no-cache HTML policy remain
-  present.
-- The deployed configuration points to the immutable image tag, target port
-  8080, and the pre-existing shared-database secret, so recap durability across
-  replicas was not regressed.
-
-## Known gaps
-
-None in the repaired build/deploy contract. A real paid purchase and revocation
-still depend on the factory-managed Sociobot billing registration; invalid and
-missing-license behavior is covered locally and live.
+- Exclude tutor-only moments from print/PDF before release.
+- Enable the production Sociobot billing product and retest checkout.
+- Repair the four P2 issues listed above, then rerun the commands and live
+  scenarios in `.factory/verification-3.md`.
