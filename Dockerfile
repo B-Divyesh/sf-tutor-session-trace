@@ -1,3 +1,5 @@
+ARG BUILD_SHA=dev
+
 FROM node:22-bookworm-slim AS frontend
 WORKDIR /build
 COPY package.json package-lock.json vite.config.ts tsconfig.json ./
@@ -11,10 +13,11 @@ COPY build.rs ./
 COPY migrations ./migrations
 COPY src ./src
 ARG BUILD_SHA
-ENV BUILD_SHA=$BUILD_SHA
-RUN test -n "$BUILD_SHA" && cargo build --locked --release
+RUN BUILD_SHA="${BUILD_SHA:-dev}" cargo build --locked --release
 
 FROM debian:bookworm-slim AS runtime
+ARG BUILD_SHA
+LABEL org.opencontainers.image.revision="$BUILD_SHA"
 RUN groupadd --system trace && useradd --system --gid trace --home-dir /app trace \
     && mkdir -p /app/dist /data && chown -R trace:trace /app /data
 WORKDIR /app

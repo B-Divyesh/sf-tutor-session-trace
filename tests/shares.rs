@@ -309,8 +309,13 @@ async fn health_includes_build_identity_and_security_headers() {
     let health = json_body(response).await;
     assert_eq!(health["status"], "ok");
     let build = health["build"].as_str().unwrap();
-    assert_eq!(build.len(), 40);
-    assert!(build.bytes().all(|byte| byte.is_ascii_hexdigit()));
+    let expected = option_env!("BUILD_SHA")
+        .filter(|value| !value.trim().is_empty())
+        .unwrap_or("dev");
+    assert_eq!(build, expected);
+    assert!(
+        build == "dev" || (build.len() == 40 && build.bytes().all(|byte| byte.is_ascii_hexdigit()))
+    );
 }
 
 #[tokio::test]

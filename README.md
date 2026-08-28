@@ -39,9 +39,9 @@ Configuration is environment-only:
 | `SOCIOBOT_BILLING_PRODUCT_URL` | Sociobot production product URL | Server-side license-verification endpoint for paid 8–30 day links |
 | `RUST_LOG` | `info,tower_http=info` | Structured log filter |
 
-`/health` reports the full immutable Git commit SHA compiled into the binary.
-The production container build requires that SHA as a build argument; it does
-not use a mutable image label or a runtime default.
+`/health` reports the build identity compiled into the binary. Local and
+source-archive builds default to `dev` without consulting `.git`; factory
+release builds pass the full immutable commit as `BUILD_SHA`.
 
 ## Test and verify
 
@@ -54,6 +54,9 @@ cargo clippy --all-targets -- -D warnings
 ```
 
 With the built server running, install Chromium once with `npx playwright install chromium` and run `npm run test:e2e` for the 390 px keyboard/share flow and Axe checks.
+Run `npm run test:platform` for keyboard focus, reduced-motion, consent,
+same-origin privacy, service-worker update, offline reload, and legal-page
+checks.
 
 Run `npm run test:recaps` against the local server (or set `BASE_URL` to a
 deployed origin) to execute eight create/read/status/delete lifecycles with
@@ -75,6 +78,9 @@ seq 1 500 | xargs -P 20 -I{} curl -fsS http://localhost:8080/health >/dev/null
 docker build --build-arg BUILD_SHA="$(git rev-parse HEAD)" -t tutor-session-trace .
 docker run --rm -p 8080:8080 -v trace-data:/data tutor-session-trace
 ```
+
+Omitting `--build-arg BUILD_SHA` is supported for local builds and produces a
+`dev` identity. The Docker build never reads `.git`.
 
 The multi-stage image runs as the unprivileged `trace` user. The factory
 container deployment provisions a product-specific database on the supported

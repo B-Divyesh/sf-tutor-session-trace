@@ -7,16 +7,18 @@
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run && cargo test",
+    "test": "vitest run && npm run test:container-contract && BUILD_SHA=0123456789abcdef0123456789abcdef01234567 cargo test",
+    "test:container-contract": "node scripts/container-contract.mjs",
     "test:frontend": "vitest run",
     "test:e2e": "node scripts/e2e.mjs",
+    "test:platform": "node scripts/platform-checks.mjs",
     "test:recaps": "node scripts/recap-consistency.mjs",
     "preview": "vite preview --host 0.0.0.0"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
     "@types/node": "^22.20.1",
-    "playwright": "^1.62.1",
+    "playwright": "1.58.2",
     "typescript": "^5.9.2",
     "vite": "^7.1.3",
     "vitest": "^3.2.4"
