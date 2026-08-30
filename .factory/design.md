@@ -34,7 +34,7 @@ Ink on paper is 13.1:1; slate on paper is 5.7:1; linen on moss is 7.3:1. Color i
 
 The desktop workspace is a split field notebook: a narrow session index and a wide observation page. On phones, the index becomes a top “Sessions” drawer and the capture bar stacks before the timeline. A fine left stem connects timestamped observations, with shape-coded outcome markers. Controls resemble stamped field labels: squared corners with a slight 2 px radius, ink borders, and restrained shadow. Primary actions are filled moss; secondary actions remain paper.
 
-Each mutation confirms itself in a polite live region. New observations appear at their timeline origin; delete is confirmed with the exact item name. Every target is at least 44 px. The capture form is reachable in document order and `Ctrl/Cmd + Enter` records an observation when focus is within it.
+Each mutation confirms itself in a polite live region. New observations appear at their timeline origin; delete is confirmed with the exact item name. Every target is at least 44 px. The capture form is reachable in document order and `Ctrl/Cmd + Enter` records an observation when focus is within it. Invalid attachment input stays in place, moves focus to the field, and exposes a linked live error.
 
 ## Motion
 
@@ -48,6 +48,15 @@ Prompt sheet: “Overhead editorial still life, botanical field research desk ad
 
 Generated with the factory image deployment through `/opt/fleet/lib/gen-image.sh` on 2026-08-27. The selected source and its prompt sidecar are kept in `assets/src/`; WebP derivatives are produced for the app. The generated work is original to this product. UI icons are original inline SVG strokes authored for Tutor Session Trace.
 
+The PWA and Apple touch icons are raster exports of the original hand-authored
+fern-stem favicon in `frontend/public/favicon.svg`. The social preview is a
+1200 × 630 crop of the generated field-notebook source. These derivatives
+were produced locally on 2026-08-30 and add no third-party assets.
+
+The demo follows the same notebook grammar but uses its own olive banner to
+make the storage boundary persistent and unmistakable. Its realistic sample
+is stored under a separate `demo:` namespace.
+
 ## Accessibility and content policy
 
-The illustration has descriptive alt text when it carries the empty-state concept and is absent from the working session view. Focus uses a 3 px moss outline plus paper offset. The single page `<h1>` names the product; workspace section labels begin at `<h2>`. Student recaps use plain language and never expose tutor-only notes. Consent is unchecked by default and sharing is unavailable until the tutor records it.
+The illustration has descriptive alt text when it carries the empty-state concept and is absent from the working session view. Focus uses a 3 px moss outline plus paper offset. Each route has one job-focused `<h1>`; workspace section labels begin at `<h2>`. Student recaps use plain language and never expose tutor-only notes. Print media removes the entire tutor-only moment rather than hiding only its label. Consent is unchecked by default and sharing is unavailable until the tutor records it.

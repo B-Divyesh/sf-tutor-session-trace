@@ -2,9 +2,13 @@
 
 Tutor Session Trace is a private-by-default field notebook for one-to-one remote coding tutors. It records timestamped attempts, outcomes, handoffs, small code snippets or links, and student-visible next practice without replacing the tutor's video call or shared editor.
 
-The tutor notebook is local-first. A copy reaches the SQLite backend only after the tutor records student consent and creates an expiring recap link. Tutor-only observations never enter that payload.
+The tutor notebook is local-first. A copy reaches the backend only after the tutor records student consent and creates an expiring recap link. Tutor-only observations never enter that payload.
 
 Live product: <https://tutor-session-trace.sociobot.in>
+
+Try the isolated sample at <https://tutor-session-trace.sociobot.in/demo>.
+Its `demo:tutor-session-trace:v1` browser storage never reads or changes the
+real notebook.
 
 ## What v1 includes
 
@@ -58,6 +62,12 @@ Run `npm run test:platform` for keyboard focus, reduced-motion, consent,
 same-origin privacy, service-worker update, offline reload, and legal-page
 checks.
 
+Run `npm run test:repairs` for print/PDF privacy, invalid-link recovery, PWA
+installability, offline recap recovery, demo isolation, the five-session
+limit, checkout-link wiring, and 390 px legal-link targets. Set `BASE_URL` to
+choose the running product. `npm run test:live-checkout` additionally verifies
+that the production Sociobot endpoint redirects to hosted checkout.
+
 Run `npm run test:recaps` against the local server (or set `BASE_URL` to a
 deployed origin) to execute eight create/read/status/delete lifecycles with
 concurrent reads. It leaves no recap records behind.
@@ -65,8 +75,9 @@ concurrent reads. It leaves no recap records behind.
 The backend tests exercise consent rejection, private-field rejection,
 server-verified paid expiry enforcement, legal deep-link responses,
 create/open/count/revoke, durable reopen consistency, concurrent recap opens,
-the immutable health identity, HSTS, and resistance to spoofed forwarding
-headers in rate limiting. A simple local load smoke after starting the server is:
+the immutable health identity, HSTS, bounded API request rates with
+`Retry-After`, and safe forwarding-header handling. A simple local load smoke
+after starting the server is:
 
 ```bash
 seq 1 500 | xargs -P 20 -I{} curl -fsS http://localhost:8080/health >/dev/null

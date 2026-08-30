@@ -31,6 +31,7 @@ use tower_http::{
 pub struct AppState {
     pub pool: AnyPool,
     attempts: Arc<Mutex<HashMap<String, (Instant, u32)>>>,
+    requests: Arc<Mutex<HashMap<String, (Instant, u32)>>>,
     billing_product_url: Arc<str>,
     billing_client: reqwest::Client,
 }
@@ -56,6 +57,7 @@ impl AppState {
         Self {
             pool,
             attempts: Arc::new(Mutex::new(HashMap::new())),
+            requests: Arc::new(Mutex::new(HashMap::new())),
             billing_product_url: billing_product_url.into(),
             billing_client: reqwest::Client::builder()
                 .connect_timeout(Duration::from_secs(3))
@@ -77,6 +79,7 @@ pub fn app(state: AppState, frontend: PathBuf) -> Router {
 
     let client_routes = Router::new()
         .route("/", get_service(ServeFile::new(index.clone())))
+        .route("/demo", get_service(ServeFile::new(index.clone())))
         .route("/privacy", get_service(ServeFile::new(index.clone())))
         .route("/terms", get_service(ServeFile::new(index.clone())))
         .route("/s/{id}", get_service(ServeFile::new(index)));
@@ -137,13 +140,44 @@ struct ErrorBody {
     error: String,
 }
 
-fn error(status: StatusCode, message: impl Into<String>) -> (StatusCode, Json<ErrorBody>) {
-    (
+struct AppError {
+    status: StatusCode,
+    message: String,
+    retry_after: Option<&'static str>,
+}
+
+impl IntoResponse for AppError {
+    fn into_response(self) -> Response {
+        let mut response = (
+            self.status,
+            Json(ErrorBody {
+                error: self.message,
+            }),
+        )
+            .into_response();
+        if let Some(retry_after) = self.retry_after {
+            response
+                .headers_mut()
+                .insert(header::RETRY_AFTER, HeaderValue::from_static(retry_after));
+        }
+        response
+    }
+}
+
+fn error(status: StatusCode, message: impl Into<String>) -> AppError {
+    AppError {
         status,
-        Json(ErrorBody {
-            error: message.into(),
-        }),
-    )
+        message: message.into(),
+        retry_after: None,
+    }
+}
+
+fn rate_error(retry_after: &'static str, message: impl Into<String>) -> AppError {
+    AppError {
+        status: StatusCode::TOO_MANY_REQUESTS,
+        message: message.into(),
+        retry_after: Some(retry_after),
+    }
 }
 
 async fn health() -> Json<Value> {
@@ -155,8 +189,9 @@ async fn create_share(
     ConnectInfo(client): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Json(payload): Json<CreateShare>,
-) -> Result<impl IntoResponse, (StatusCode, Json<ErrorBody>)> {
-    rate_limit(&state, client).await?;
+) -> Result<impl IntoResponse, AppError> {
+    rate_limit_api(&state, client, &headers).await?;
+    rate_limit_create(&state, client, &headers).await?;
     validate(&payload)?;
     require_paid_expiry(&state, &headers, payload.expires_days).await?;
 
@@ -194,7 +229,7 @@ async fn require_paid_expiry(
     state: &AppState,
     headers: &HeaderMap,
     expires_days: u64,
-) -> Result<(), (StatusCode, Json<ErrorBody>)> {
+) -> Result<(), AppError> {
     if expires_days <= 7 {
         return Ok(());
     }
@@ -207,7 +242,7 @@ async fn require_paid_expiry(
     else {
         return Err(error(
             StatusCode::FORBIDDEN,
-            "A valid Field guide license is required for links longer than seven days.",
+            "A valid paid license is required for links longer than seven days.",
         ));
     };
 
@@ -237,15 +272,18 @@ async fn require_paid_expiry(
     } else {
         Err(error(
             StatusCode::FORBIDDEN,
-            "A valid Field guide license is required for links longer than seven days.",
+            "A valid paid license is required for links longer than seven days.",
         ))
     }
 }
 
 async fn get_share(
     State(state): State<AppState>,
+    ConnectInfo(client): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Path(id): Path<String>,
-) -> Result<Json<Value>, (StatusCode, Json<ErrorBody>)> {
+) -> Result<Json<Value>, AppError> {
+    rate_limit_api(&state, client, &headers).await?;
     if !valid_token(&id, 22) {
         return Err(error(
             StatusCode::NOT_FOUND,
@@ -305,9 +343,12 @@ struct KeyQuery {
 
 async fn share_status(
     State(state): State<AppState>,
+    ConnectInfo(client): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Path(id): Path<String>,
     Query(query): Query<KeyQuery>,
-) -> Result<Json<Value>, (StatusCode, Json<ErrorBody>)> {
+) -> Result<Json<Value>, AppError> {
+    rate_limit_api(&state, client, &headers).await?;
     let row = sqlx::query("SELECT delete_key, open_count, expires_at FROM shares WHERE id = $1")
         .bind(&id)
         .fetch_optional(&state.pool)
@@ -328,9 +369,12 @@ async fn share_status(
 
 async fn delete_share(
     State(state): State<AppState>,
+    ConnectInfo(client): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Path(id): Path<String>,
     Query(query): Query<KeyQuery>,
-) -> Result<StatusCode, (StatusCode, Json<ErrorBody>)> {
+) -> Result<StatusCode, AppError> {
+    rate_limit_api(&state, client, &headers).await?;
     let result = sqlx::query("DELETE FROM shares WHERE id = $1 AND delete_key = $2")
         .bind(&id)
         .bind(&query.key)
@@ -351,7 +395,7 @@ async fn delete_share(
     Ok(StatusCode::NO_CONTENT)
 }
 
-fn validate(payload: &CreateShare) -> Result<(), (StatusCode, Json<ErrorBody>)> {
+fn validate(payload: &CreateShare) -> Result<(), AppError> {
     if !payload.consent {
         return Err(error(
             StatusCode::UNPROCESSABLE_ENTITY,
@@ -430,14 +474,12 @@ fn validate(payload: &CreateShare) -> Result<(), (StatusCode, Json<ErrorBody>)> 
     Ok(())
 }
 
-async fn rate_limit(
+async fn rate_limit_create(
     state: &AppState,
     client: SocketAddr,
-) -> Result<(), (StatusCode, Json<ErrorBody>)> {
-    // The peer address comes from the serving socket (Azure's ingress proxy),
-    // not a caller-controlled forwarding header. Container Apps never exposes
-    // this listener directly, so callers cannot choose a new limiter identity.
-    let key = client.ip().to_string();
+    headers: &HeaderMap,
+) -> Result<(), AppError> {
+    let key = client_key(client, headers);
     let mut attempts = state.attempts.lock().await;
     let entry = attempts.entry(key).or_insert((Instant::now(), 0));
     if entry.0.elapsed() > Duration::from_secs(60) {
@@ -445,12 +487,54 @@ async fn rate_limit(
     }
     entry.1 += 1;
     if entry.1 > 20 {
-        return Err(error(
-            StatusCode::TOO_MANY_REQUESTS,
+        return Err(rate_error(
+            "60",
             "Too many links were created. Wait a minute and try again.",
         ));
     }
     Ok(())
+}
+
+async fn rate_limit_api(
+    state: &AppState,
+    client: SocketAddr,
+    headers: &HeaderMap,
+) -> Result<(), AppError> {
+    let key = client_key(client, headers);
+    let mut requests = state.requests.lock().await;
+    let entry = requests.entry(key).or_insert((Instant::now(), 0));
+    if entry.0.elapsed() > Duration::from_secs(1) {
+        *entry = (Instant::now(), 0);
+    }
+    entry.1 += 1;
+    if entry.1 > 100 {
+        return Err(rate_error(
+            "1",
+            "Too many requests. Wait a second and try again.",
+        ));
+    }
+    Ok(())
+}
+
+fn client_key(client: SocketAddr, headers: &HeaderMap) -> String {
+    let peer = client.ip();
+    let trusted_proxy = peer.is_loopback()
+        || match peer {
+            std::net::IpAddr::V4(address) => address.is_private(),
+            std::net::IpAddr::V6(address) => address.is_unique_local(),
+        };
+    if trusted_proxy {
+        if let Some(forwarded) = headers
+            .get("x-forwarded-for")
+            .and_then(|value| value.to_str().ok())
+            .and_then(|value| value.split(',').next())
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        {
+            return forwarded.to_owned();
+        }
+    }
+    peer.to_string()
 }
 
 fn random_token(length: usize) -> String {

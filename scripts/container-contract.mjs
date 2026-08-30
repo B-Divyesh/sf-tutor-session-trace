@@ -24,6 +24,8 @@ assert(
   dockerfile.includes('org.opencontainers.image.revision="$BUILD_SHA"'),
   'the runtime image must expose the supplied revision as OCI metadata'
 );
+assert(/^FROM rust:1(?:-\S+)? AS backend$/m.test(dockerfile), 'the backend stage must track the current stable Rust 1 image');
+assert(!/^FROM rust:1\.\d+/m.test(dockerfile), 'the backend stage must not pin a Rust minor version');
 assert(!/(?:COPY|ADD)\s+.*\.git|\bgit\b/i.test(dockerfile), 'the container build must not read .git');
 assert(!/Command::new\("git"\)|rev-parse|\.git/.test(buildScript), 'build.rs must not depend on Git metadata');
 assert(buildScript.includes('"dev".to_owned()'), 'build.rs must have a source-archive-safe dev identity');

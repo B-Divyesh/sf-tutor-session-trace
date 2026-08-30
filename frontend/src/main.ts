@@ -3,10 +3,12 @@ import { emptyStore, formatTime, label, newId, sessionMarkdown, studentRecap, ty
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 const STORE_KEY = 'tutor-session-trace:v1';
+const DEMO_STORE_KEY = 'demo:tutor-session-trace:v1';
 const LICENSE_KEY = 'sb_license:tutor-session-trace';
 const VERDICT_KEY = `${LICENSE_KEY}:verdict`;
 const BILLING = 'https://api.sociobot.in/api/v1/products/tutor-session-trace';
 let storageError = '';
+const demoMode = location.pathname === '/demo' || new URLSearchParams(location.search).get('demo') === '1';
 let store = loadStore();
 let paid = cachedPaid();
 let toast = '';
@@ -24,7 +26,9 @@ function safeLink(value: string): string | null {
 
 function loadStore(): TraceStore {
   try {
-    const parsed = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
+    const stored = localStorage.getItem(demoMode ? DEMO_STORE_KEY : STORE_KEY);
+    if (demoMode && stored === null) return sampleStore();
+    const parsed = JSON.parse(stored || 'null');
     return parsed?.sessions && Array.isArray(parsed.sessions) ? parsed : emptyStore();
   } catch {
     storageError = 'Saved notes could not be read. New notes will still work, but export them before leaving.';
@@ -33,7 +37,7 @@ function loadStore(): TraceStore {
 }
 
 function save(message?: string) {
-  try { localStorage.setItem(STORE_KEY, JSON.stringify(store)); }
+  try { localStorage.setItem(demoMode ? DEMO_STORE_KEY : STORE_KEY, JSON.stringify(store)); }
   catch { storageError = 'This browser could not save locally. Export this recap before leaving.'; }
   if (message) announce(message);
   render();
@@ -76,12 +80,13 @@ async function checkLicense() {
 function shell(content: string, extra = '') {
   return `<header class="topbar">
     <a class="brand" href="/" aria-label="Tutor Session Trace home"><span class="brand-mark" aria-hidden="true">⌁</span><span>Tutor Session Trace</span></a>
-    <nav aria-label="Primary"><a href="/">Notebook</a><button class="quiet-button" data-settings>Plan & settings</button></nav>
+    <nav aria-label="Primary"><a href="/demo">Demo</a><button class="quiet-button" data-settings>Plan & settings</button></nav>
   </header>
+  ${demoMode ? '<aside class="demo-banner" aria-label="Demo mode"><strong>Demo — sample data, nothing is saved to your notebook</strong><span><button data-reset-demo>Reset demo</button><button data-leave-demo>Start for real</button></span></aside>' : ''}
   ${!navigator.onLine ? '<div class="offline" role="status">Offline — local notes still work; sharing will wait for a connection.</div>' : ''}
   ${storageError ? `<div class="error-banner" role="alert">${escapeHtml(storageError)}</div>` : ''}
   ${content}
-  <footer><span>Private by default. Built for the lesson beside the editor.</span><span><a href="/privacy">Privacy</a><a href="/terms">Terms</a></span></footer>
+  <footer><span>Session notes for one-to-one coding tutors. Built by Param Factory.</span><span><a href="/privacy">Privacy</a><a href="/terms">Terms</a></span></footer>
   <div class="toast" data-toast aria-live="polite">${escapeHtml(toast)}</div>${extra}`;
 }
 
@@ -93,11 +98,12 @@ function render() {
 }
 
 function renderNotebook() {
+  document.title = demoMode ? 'Demo — Tutor Session Trace' : 'Tutor Session Trace — record coding lesson notes';
   const active = store.sessions.find(session => session.id === store.activeId) || store.sessions[0];
   if (active && store.activeId !== active.id) store.activeId = active.id;
-  app.innerHTML = shell(`<main id="main" class="notebook-shell">
+  app.innerHTML = shell(`<main id="main" class="notebook-shell ${active ? 'has-session' : 'is-empty'}">
     <aside class="session-rail" aria-label="Session notebook">
-      <div class="rail-heading"><div><span class="eyebrow">Field index</span><h2>Sessions</h2></div><span class="plan-stamp">${paid ? 'Field guide' : `${store.sessions.length}/5 free`}</span></div>
+      <div class="rail-heading"><div><span class="eyebrow">Session list</span><h2>Sessions</h2></div><span class="plan-stamp">${paid ? 'Full plan' : `${store.sessions.length}/5 free`}</span></div>
       ${store.sessions.length ? `<label class="search-label" for="session-search">Find a session</label><input id="session-search" type="search" placeholder="Student or topic" autocomplete="off"><ol class="session-list">${store.sessions.map(session => `<li><button data-session="${session.id}" class="session-tab ${active?.id === session.id ? 'active' : ''}"><strong>${escapeHtml(session.student)}</strong><span>${escapeHtml(session.topic)}</span><time datetime="${session.date}">${formatDate(session.date)}</time></button></li>`).join('')}</ol>` : ''}
       <form class="new-session" data-new-session>
         <h3>${store.sessions.length ? 'Start another session' : 'Start your first trace'}</h3>
@@ -116,21 +122,21 @@ function renderNotebook() {
 }
 
 function emptyView() {
-  return `<div class="empty-state"><div class="empty-copy"><span class="eyebrow">A record that outlives the call</span><h1>Notice the attempt.<br>Leave a path forward.</h1><p>Capture coding moments without leaving your video call or shared editor. Label what happened, attach the useful fragment, and send a consent-led recap.</p><ul><li><span>01</span> Record attempts as they happen</li><li><span>02</span> Separate tutor-only notes</li><li><span>03</span> End with visible next practice</li></ul><a class="primary button-link" href="#student">Begin with a student</a></div><picture class="hero-art"><source media="(max-width: 700px)" srcset="/assets/field-notebook-720.webp"><img src="/assets/field-notebook-1280.webp" width="1280" height="853" fetchpriority="high" alt="An open field notebook with timeline rules, pressed ferns, and writing tools arranged on a tutor's desk."></picture></div>`;
+  return `<div class="empty-state"><div class="empty-copy"><span class="eyebrow">Tutor Session Trace</span><h1>Record coding lessons and share next steps</h1><p>For one-to-one coding tutors who need useful notes without leaving the call or shared editor.</p><ul><li><span>01</span> Five sessions are free</li><li><span>02</span> Local notes work offline</li><li><span>03</span> Sharing requires student consent</li></ul><div class="first-actions"><button class="primary" data-start-demo>Try it with sample data</button><a class="button-link" href="#student">Start your first session</a></div><p class="action-note">The demo opens a finished lesson trace. It never reads or changes your notebook.</p></div><picture class="hero-art"><source media="(max-width: 700px)" srcset="/assets/field-notebook-720.webp"><img src="/assets/field-notebook-1280.webp" width="1280" height="853" fetchpriority="high" alt="An open field notebook with timeline rules, pressed ferns, and writing tools arranged on a tutor's desk."></picture></div>`;
 }
 
 function sessionView(session: TraceSession) {
   return `<article class="session-page" data-active="${session.id}">
-    <header class="session-header"><div><span class="eyebrow">Observation sheet · ${formatDate(session.date)}</span><h1>${escapeHtml(session.topic)}</h1><p>with ${escapeHtml(session.student)}</p></div><div class="header-actions"><button data-export-md>Export Markdown</button><button data-print>Print / PDF</button><button class="icon-button danger-text" data-delete-session aria-label="Delete this session">Delete</button></div></header>
+    <header class="session-header"><div><span class="eyebrow">Session · ${formatDate(session.date)}</span><h1>${escapeHtml(session.topic)}</h1><p>with ${escapeHtml(session.student)}</p></div><div class="header-actions"><button data-export-md>Export Markdown</button><button data-print>Print / PDF</button><button class="icon-button danger-text" data-delete-session aria-label="Delete this session">Delete</button></div></header>
     <div class="session-grid"><div class="record-column">
       <section class="capture" aria-labelledby="capture-title"><div class="section-title"><div><span class="specimen-number">Live capture</span><h2 id="capture-title">Add a lesson moment</h2></div><span class="shortcut" aria-hidden="true">⌘ / Ctrl + Enter</span></div>
         <form data-moment-form><label for="moment-note">What did you observe?</label><textarea id="moment-note" name="note" required maxlength="2000" rows="3" placeholder="The student changed the base case and explained why…"></textarea>
           <div class="capture-fields"><label>Moment type<select name="kind"><option value="attempt">Attempt</option><option value="breakthrough">Breakthrough</option><option value="handoff">Handoff</option></select></label><label>Outcome<select name="outcome"><option value="progressing">Progressing</option><option value="stuck">Stuck</option><option value="solved">Solved</option></select></label><label>Attach<select name="attachmentType" data-attachment-type><option value="">Nothing</option><option value="link">Link</option><option value="code">Code snippet</option></select></label></div>
-          <div class="attachment-field" hidden><label for="attachment-value">Link or code snippet</label><textarea id="attachment-value" name="attachment" rows="3" maxlength="8000" placeholder="Paste only the useful fragment—not credentials or a private repository."></textarea></div>
+          <div class="attachment-field" hidden><label for="attachment-value">Link or code snippet</label><textarea id="attachment-value" name="attachment" rows="3" maxlength="8000" aria-describedby="attachment-help attachment-error" placeholder="Paste only the useful fragment—not credentials or a private repository."></textarea><p id="attachment-help" class="field-note">Use a complete http:// or https:// address. Never paste credentials.</p><p id="attachment-error" class="form-error" role="alert" hidden></p></div>
           <div class="capture-submit"><label class="check-label"><input type="checkbox" name="private"> Tutor-only note</label><button class="primary" type="submit">Record moment</button></div>
         </form>
       </section>
-      <section class="timeline-section" aria-labelledby="timeline-title"><div class="section-title"><div><span class="specimen-number">Specimens ${String(session.moments.length).padStart(2, '0')}</span><h2 id="timeline-title">Attempt timeline</h2></div></div>${timeline(session)}</section>
+      <section class="timeline-section" aria-labelledby="timeline-title"><div class="section-title"><div><span class="specimen-number">Moments ${String(session.moments.length).padStart(2, '0')}</span><h2 id="timeline-title">Attempt timeline</h2></div></div>${timeline(session)}</section>
     </div><aside class="recap-column" aria-label="Student recap">
       <section><span class="specimen-number">Recap note</span><h2>What to remember</h2><label class="sr-only" for="summary">Student-visible session summary</label><textarea id="summary" data-summary rows="5" maxlength="2000" placeholder="Name the idea that should stick…">${escapeHtml(session.summary)}</textarea></section>
       <section><span class="specimen-number">Next practice</span><h2>Continue from here</h2><form class="task-form" data-task-form><label class="sr-only" for="task">New practice task</label><input id="task" name="task" required maxlength="240" placeholder="Add a small, concrete task"><button type="submit" aria-label="Add practice task">Add</button></form>${tasks(session)}</section>
@@ -143,7 +149,7 @@ function timeline(session: TraceSession) {
   if (!session.moments.length) return `<div class="timeline-empty"><span aria-hidden="true">⌁</span><p>Your first observation will appear here with its time and outcome.</p></div>`;
   return `<ol class="timeline">${session.moments.map((item, index) => {
     const href = item.attachment?.type === 'link' ? safeLink(item.attachment.value) : null;
-    return `<li class="moment moment-${item.outcome}"><div class="moment-marker" aria-hidden="true">${index + 1}</div><article><header><time datetime="${item.at}">${formatTime(item.at)}</time><span class="tag kind">${label(item.kind)}</span><span class="tag outcome">${label(item.outcome)}</span>${item.private ? '<span class="tag private">Tutor only</span>' : ''}</header><p>${escapeHtml(item.note)}</p>${href ? `<a class="attachment link" href="${escapeHtml(href)}" target="_blank" rel="noreferrer">Open attached link <span aria-hidden="true">↗</span></a>` : ''}${item.attachment?.type === 'code' ? `<pre class="attachment"><code>${escapeHtml(item.attachment.value)}</code></pre>` : ''}<button class="delete-small" data-delete-moment="${item.id}">Remove</button></article></li>`;
+    return `<li class="moment moment-${item.outcome}${item.private ? ' moment-private' : ''}"><div class="moment-marker" aria-hidden="true">${index + 1}</div><article><header><time datetime="${item.at}">${formatTime(item.at)}</time><span class="tag kind">${label(item.kind)}</span><span class="tag outcome">${label(item.outcome)}</span>${item.private ? '<span class="tag private">Tutor only</span>' : ''}</header><p>${escapeHtml(item.note)}</p>${href ? `<a class="attachment link" href="${escapeHtml(href)}" target="_blank" rel="noreferrer">Open attached link <span aria-hidden="true">↗</span></a>` : ''}${item.attachment?.type === 'code' ? `<pre class="attachment"><code>${escapeHtml(item.attachment.value)}</code></pre>` : ''}<button class="delete-small" data-delete-moment="${item.id}">Remove</button></article></li>`;
   }).join('')}</ol>`;
 }
 
@@ -159,11 +165,23 @@ function shareControls(session: TraceSession) {
 }
 
 function settingsDialog() {
-  return `<dialog id="settings"><form method="dialog" class="dialog-close"><button aria-label="Close plan and settings">×</button></form><span class="eyebrow">Plan & settings</span><h2>${paid ? 'Field guide unlocked' : 'A larger field notebook'}</h2>${paid ? '<p>Your license is active. Keep unlimited local session history and choose share expiry from 1 to 30 days.</p>' : '<p>The free notebook includes five local sessions, seven-day share links, and all exports. A one-time purchase adds unlimited client history and configurable share expiry.</p><p class="price">$19 <small>one time</small></p><a class="primary button-link wide" href="https://api.sociobot.in/api/v1/products/tutor-session-trace/checkout">Unlock the field guide</a>'}<hr><form data-license-form><label for="license">Have a license? Paste it here</label><input id="license" name="license" autocomplete="off" required><button type="submit">Verify license</button></form>${localStorage.getItem(LICENSE_KEY) && !paid ? '<p class="license-note">License no longer active or not yet verified. Check the token or purchase a new license.</p>' : ''}<p class="legal-note">Sociobot/Dodo is the merchant of record. Refunds are handled there and revoke the license. <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a></p></dialog>`;
+  return `<dialog id="settings"><form method="dialog" class="dialog-close"><button aria-label="Close plan and settings">×</button></form><span class="eyebrow">Plan & settings</span><h2>${paid ? 'Full plan active' : 'Full notebook plan'}</h2>${paid ? '<p>Your license is active. Keep unlimited local session history and choose share expiry from 1 to 30 days.</p>' : '<p>The free notebook includes five local sessions, seven-day share links, and all exports. A one-time purchase adds unlimited client history and configurable share expiry.</p><p class="price">$19 <small>one time</small></p><a class="primary button-link wide" href="https://api.sociobot.in/api/v1/products/tutor-session-trace/checkout">Buy the full notebook</a>'}<hr><form data-license-form><label for="license">Have a license? Paste it here</label><input id="license" name="license" autocomplete="off" required><button type="submit">Verify license</button></form>${localStorage.getItem(LICENSE_KEY) && !paid ? '<p class="license-note">License no longer active or not yet verified. Check the token or purchase a new license.</p>' : ''}<p class="legal-note">Sociobot/Dodo is the merchant of record. Refunds are handled there and revoke the license. <a href="/privacy">Privacy</a> · <a href="/terms">Terms</a></p></dialog>`;
 }
 
 function bindCommon() {
   document.querySelectorAll<HTMLElement>('[data-settings]').forEach(button => button.addEventListener('click', () => (document.querySelector<HTMLDialogElement>('#settings')?.showModal())));
+  document.querySelector<HTMLButtonElement>('[data-start-demo]')?.addEventListener('click', () => {
+    localStorage.setItem(DEMO_STORE_KEY, JSON.stringify(sampleStore()));
+    location.assign('/demo');
+  });
+  document.querySelector<HTMLButtonElement>('[data-reset-demo]')?.addEventListener('click', () => {
+    store = sampleStore();
+    save('Demo reset.');
+  });
+  document.querySelector<HTMLButtonElement>('[data-leave-demo]')?.addEventListener('click', () => {
+    localStorage.removeItem(DEMO_STORE_KEY);
+    location.assign('/');
+  });
   document.querySelector<HTMLFormElement>('[data-license-form]')?.addEventListener('submit', event => {
     event.preventDefault();
     const data = new FormData(event.currentTarget as HTMLFormElement);
@@ -194,10 +212,24 @@ function bindNotebook(active?: TraceSession) {
   });
   const momentForm = document.querySelector<HTMLFormElement>('[data-moment-form]');
   momentForm?.addEventListener('keydown', event => { if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) momentForm.requestSubmit(); });
+  const attachmentField = momentForm?.elements.namedItem('attachment') as HTMLTextAreaElement | null;
+  attachmentField?.addEventListener('input', () => {
+    attachmentField.removeAttribute('aria-invalid');
+    const error = document.querySelector<HTMLElement>('#attachment-error');
+    if (error) { error.hidden = true; error.textContent = ''; }
+  });
   momentForm?.addEventListener('submit', event => {
     event.preventDefault(); const data = new FormData(event.currentTarget as HTMLFormElement);
     const attachmentType = String(data.get('attachmentType')) as '' | 'link' | 'code'; const attachmentValue = String(data.get('attachment')).trim();
-    if (attachmentType === 'link' && !safeLink(attachmentValue)) { announce('Use a complete http:// or https:// link.'); render(); return; }
+    if (attachmentType === 'link' && !safeLink(attachmentValue)) {
+      const message = 'Use a complete http:// or https:// link.';
+      const error = document.querySelector<HTMLElement>('#attachment-error');
+      if (error) { error.textContent = message; error.hidden = false; }
+      attachmentField?.setAttribute('aria-invalid', 'true');
+      attachmentField?.focus();
+      announce(message);
+      return;
+    }
     active.moments.unshift({ id: newId(), at: new Date().toISOString(), kind: String(data.get('kind')) as never, outcome: String(data.get('outcome')) as never, note: String(data.get('note')).trim(), attachment: attachmentType && attachmentValue ? { type: attachmentType, value: attachmentValue } : undefined, private: data.get('private') === 'on' });
     save('Moment recorded.');
   });
@@ -224,7 +256,8 @@ function bindNotebook(active?: TraceSession) {
 
 async function createShare(event: SubmitEvent, session: TraceSession) {
   event.preventDefault(); if (!session.consent) return;
-  const button = (event.currentTarget as HTMLFormElement).querySelector('button')!; button.disabled = true; button.textContent = 'Planting link…';
+  if (demoMode) { announce('Demo notes stay in this browser. Start for real to create a student link.'); render(); return; }
+  const button = (event.currentTarget as HTMLFormElement).querySelector('button')!; button.disabled = true; button.textContent = 'Creating link…';
   try {
     const data = new FormData(event.currentTarget as HTMLFormElement);
     const license = localStorage.getItem(LICENSE_KEY)?.trim();
@@ -254,8 +287,13 @@ async function renderShared(id: string) {
     const response = await fetch(`/api/shares/${encodeURIComponent(id)}`); const data = await response.json();
     if (!response.ok) throw new Error(response.status === 410 ? 'This recap has expired.' : 'This recap could not be found.');
     document.title = `${data.session_title} — Tutor Session Trace`;
-    app.innerHTML = `<header class="shared-top"><a class="brand" href="/"><span class="brand-mark" aria-hidden="true">⌁</span><span>Tutor Session Trace</span></a><span>Student recap</span></header><main id="main" class="shared-sheet"><header><span class="eyebrow">Session trace · ${formatDate(data.session_date)}</span><h1>${escapeHtml(data.session_title)}</h1><p>Prepared for ${escapeHtml(data.student_name)}</p></header>${data.summary ? `<section><span class="specimen-number">What to remember</span><h2>Session note</h2><p class="lead">${escapeHtml(data.summary)}</p></section>` : ''}<section><span class="specimen-number">What happened</span><h2>Attempt timeline</h2>${sharedMoments(data.moments)}</section><section><span class="specimen-number">Continue from here</span><h2>Next practice</h2>${data.next_tasks.length ? `<ul class="shared-tasks">${data.next_tasks.map((task: { text: string; done: boolean }) => `<li class="${task.done ? 'done' : ''}"><span aria-hidden="true">${task.done ? '✓' : '→'}</span>${escapeHtml(task.text)}</li>`).join('')}</ul>` : '<p>No next-practice tasks were added.</p>'}</section><aside class="student-note">This page contains only notes your tutor marked as student-visible. It expires automatically on ${formatDate(data.expires_at)}.</aside></main><footer><span>Keep this path nearby while you practice.</span><span><a href="/privacy">Privacy</a><a href="/terms">Terms</a></span></footer>`;
+    app.innerHTML = `<header class="shared-top"><a class="brand" href="/"><span class="brand-mark" aria-hidden="true">⌁</span><span>Tutor Session Trace</span></a><span>Student recap</span></header><main id="main" class="shared-sheet"><header><span class="eyebrow">Session recap · ${formatDate(data.session_date)}</span><h1>${escapeHtml(data.session_title)}</h1><p>Prepared for ${escapeHtml(data.student_name)}</p></header>${data.summary ? `<section><span class="specimen-number">What to remember</span><h2>Session note</h2><p class="lead">${escapeHtml(data.summary)}</p></section>` : ''}<section><span class="specimen-number">What happened</span><h2>Attempt timeline</h2>${sharedMoments(data.moments)}</section><section><span class="specimen-number">Continue from here</span><h2>Next practice</h2>${data.next_tasks.length ? `<ul class="shared-tasks">${data.next_tasks.map((task: { text: string; done: boolean }) => `<li class="${task.done ? 'done' : ''}"><span aria-hidden="true">${task.done ? '✓' : '→'}</span>${escapeHtml(task.text)}</li>`).join('')}</ul>` : '<p>No next-practice tasks were added.</p>'}</section><aside class="student-note">This page contains only notes your tutor marked as student-visible. It expires automatically on ${formatDate(data.expires_at)}.</aside></main><footer><span>Use this recap while you practice.</span><span><a href="/privacy">Privacy</a><a href="/terms">Terms</a></span></footer>`;
   } catch (error) {
+    if (!navigator.onLine) {
+      app.innerHTML = `<main id="main" class="shared-error"><span class="error-specimen" aria-hidden="true">⌁</span><h1>You’re offline</h1><p>Reconnect to open this saved recap link. The link may still be valid.</p><button class="primary" data-retry-shared>Try again</button><a href="/">About Tutor Session Trace</a></main>`;
+      document.querySelector<HTMLButtonElement>('[data-retry-shared]')?.addEventListener('click', () => void renderShared(id));
+      return;
+    }
     app.innerHTML = `<main id="main" class="shared-error"><span class="error-specimen" aria-hidden="true">×</span><h1>${escapeHtml((error as Error).message)}</h1><p>Ask your tutor for a fresh link. No sign-in is needed.</p><a href="/">About Tutor Session Trace</a></main>`;
   }
 }
@@ -272,6 +310,22 @@ function renderLegal(path: string) {
 }
 
 function formatDate(value: string) { const date = new Date(value.length === 10 ? `${value}T12:00:00` : value); return new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', year: 'numeric' }).format(date); }
+function sampleStore(): TraceStore {
+  const session: TraceSession = {
+    id: 'demo-recursive-tree', student: 'Mina', topic: 'Tracing recursive trees', date: '2026-08-29', createdAt: '2026-08-29T10:00:00Z',
+    summary: 'Name the base case before following each branch.', consent: false,
+    moments: [
+      { id: 'demo-3', at: '2026-08-29T10:31:00Z', kind: 'handoff', outcome: 'solved', note: 'Explained why the empty child returns zero.', private: false },
+      { id: 'demo-2', at: '2026-08-29T10:18:00Z', kind: 'breakthrough', outcome: 'progressing', note: 'Drew the left branch and matched each return value.', attachment: { type: 'code', value: 'if (node == null) return 0;' }, private: false },
+      { id: 'demo-1', at: '2026-08-29T10:07:00Z', kind: 'attempt', outcome: 'stuck', note: 'Ask about call-stack confidence next time.', private: true },
+    ],
+    tasks: [
+      { id: 'demo-task-1', text: 'Trace a tree of depth three on paper.', done: false },
+      { id: 'demo-task-2', text: 'Write one recursive base case from memory.', done: true },
+    ],
+  };
+  return { activeId: session.id, sessions: [session] };
+}
 function slug(value: string) { return value.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''); }
 function download(name: string, content: string, type: string) { const url = URL.createObjectURL(new Blob([content], { type })); const anchor = document.createElement('a'); anchor.href = url; anchor.download = name; anchor.click(); URL.revokeObjectURL(url); announce('Markdown exported.'); render(); }
 async function copyText(value: string) { try { await navigator.clipboard.writeText(value); announce('Student link copied.'); render(); } catch { const input = document.querySelector<HTMLInputElement>('#share-url'); input?.select(); announce('Select and copy the link manually.'); render(); } }

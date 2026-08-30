@@ -274,7 +274,13 @@ async fn paid_expiry_requires_the_sociobot_verdict_not_a_client_flag() {
 #[tokio::test]
 async fn legal_routes_have_real_success_responses_and_unknown_paths_do_not() {
     let service = test_app().await;
-    for path in ["/", "/privacy", "/terms", "/s/abcdefghijklmnopqrstuvwxyz"] {
+    for path in [
+        "/",
+        "/demo",
+        "/privacy",
+        "/terms",
+        "/s/abcdefghijklmnopqrstuvwxyz",
+    ] {
         let response = service
             .clone()
             .oneshot(Request::get(path).body(Body::empty()).unwrap())
@@ -347,6 +353,34 @@ async fn forwarded_headers_cannot_bypass_the_peer_rate_limit() {
         .await
         .unwrap();
     assert_eq!(blocked.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(blocked.headers()["retry-after"], "60");
+}
+
+#[tokio::test]
+async fn every_share_endpoint_has_a_bounded_rate_window_and_retry_header() {
+    let service = test_app().await;
+    for _ in 0..100 {
+        let response = service
+            .clone()
+            .oneshot(
+                Request::get("/api/shares/not-a-valid-id")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+    let blocked = service
+        .oneshot(
+            Request::get("/api/shares/not-a-valid-id")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(blocked.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(blocked.headers()["retry-after"], "1");
 }
 
 async fn durable_app(database_url: &str, peer: &str) -> axum::Router {

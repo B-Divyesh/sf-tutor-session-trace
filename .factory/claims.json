@@ -1,0 +1,72 @@
+[
+  {
+    "id": "private-exports",
+    "claim": "Tutor-only observations are excluded from Markdown, print/PDF, and student recaps.",
+    "where": "README, session share panel, privacy page",
+    "test": "npm run test:repairs -- --grep @claim:private-exports",
+    "sandbox": "fresh browser storage; one public and one tutor-only moment; inspect print media, generated PDF, and downloaded Markdown"
+  },
+  {
+    "id": "pwa-installable",
+    "claim": "The notebook has an installable PWA shell.",
+    "where": "README",
+    "test": "npm run test:repairs -- --grep @claim:pwa-installable",
+    "sandbox": "fresh Chromium context; load the manifest and query Chromium installability errors"
+  },
+  {
+    "id": "offline-local-capture",
+    "claim": "Saved local notes can be opened and edited offline after the first visit; shared recaps require a connection.",
+    "where": "landing facts, README, terms",
+    "test": "npm run test:repairs -- --grep @claim:offline-local-capture",
+    "sandbox": "fresh Chromium context; save locally, go offline, reload, record a moment, then reload a valid recap offline"
+  },
+  {
+    "id": "demo-sandbox",
+    "claim": "The sample demo does not read or change the real notebook.",
+    "where": "landing action and demo banner",
+    "test": "npm run test:repairs -- --grep @claim:demo-sandbox",
+    "sandbox": "fresh Chromium context with a sentinel real notebook; enter, reset, and leave the separate demo namespace"
+  },
+  {
+    "id": "five-free-sessions",
+    "claim": "The free notebook holds five local sessions.",
+    "where": "landing facts, settings, README, terms",
+    "test": "npm run test:repairs -- --grep @claim:five-free-sessions",
+    "sandbox": "fresh browser context seeded with five local sessions; assert sixth-session creation is disabled and explained"
+  },
+  {
+    "id": "consent-required",
+    "claim": "Sharing requires recorded student consent.",
+    "where": "landing facts, share panel, README, privacy, terms",
+    "test": "npm run test:repairs -- --grep @claim:consent-required",
+    "sandbox": "fresh browser and backend state; assert the UI withholds sharing and the API rejects a request until consent is recorded"
+  },
+  {
+    "id": "shared-recap-lifecycle",
+    "claim": "Student recap links expire after the chosen period, count opens, and can be deleted early.",
+    "where": "README, share panel, privacy page",
+    "test": "npm run test:repairs -- --grep @claim:shared-recap-lifecycle",
+    "sandbox": "fresh backend record; assert seven-day expiry, one counted open, authenticated deletion, and subsequent 404"
+  },
+  {
+    "id": "privacy-no-tracking",
+    "claim": "The free notebook and demo load no analytics, trackers, third-party scripts, or third-party fonts.",
+    "where": "README, privacy page",
+    "test": "npm run test:repairs -- --grep @claim:privacy-no-tracking",
+    "sandbox": "fresh browser context; record every request through a demo capture and legal navigation and assert same-origin resources only"
+  },
+  {
+    "id": "paid-plan",
+    "claim": "A valid paid license allows more than five local sessions and 1–30 day recap expiry.",
+    "where": "settings, README, terms",
+    "test": "npm run test:repairs -- --grep @claim:paid-plan",
+    "sandbox": "fresh browser context with a recorded valid Sociobot verdict; assert sixth-session creation and exact 1, 7, 14, and 30-day choices"
+  },
+  {
+    "id": "paid-checkout",
+    "claim": "The $19 one-time purchase opens the registered Sociobot hosted checkout.",
+    "where": "settings, README, terms",
+    "test": "BASE_URL=https://tutor-session-trace.sociobot.in npm run test:live-checkout",
+    "sandbox": "live product UI; assert its Sociobot buy link returns a redirect to hosted Dodo checkout"
+  }
+]

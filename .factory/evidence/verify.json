@@ -1,14 +1,14 @@
 {
-  "url": "https://tutor-session-trace.sociobot.in",
-  "loadMs": 552,
+  "url": "http://127.0.0.1:8091",
+  "loadMs": 570,
   "errors": [],
   "a11y": {
-    "title": "Tutor Session Trace — lesson notes that lead somewhere",
+    "title": "Tutor Session Trace — record coding lesson notes",
     "lang": "en",
     "h1": 1,
     "main": true,
     "imgsMissingAlt": 0,
     "buttonsUnlabeled": 0,
-    "textLength": 631
+    "textLength": 675
   }
 }

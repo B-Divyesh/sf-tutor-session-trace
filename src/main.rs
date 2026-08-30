@@ -14,6 +14,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         )
         .init();
 
+    let port_supplied = env::var_os("PORT").is_some();
+    let database_supplied = env::var_os("DATABASE_URL").is_some();
+    let frontend_supplied = env::var_os("FRONTEND_DIR").is_some();
+    let billing_supplied = env::var_os("SOCIOBOT_BILLING_PRODUCT_URL").is_some();
     let port: u16 = env::var("PORT").unwrap_or_else(|_| "8080".into()).parse()?;
     let database_url = env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite://data/trace.db".into());
     if let Some(path) = database_url.strip_prefix("sqlite://") {
@@ -43,6 +47,25 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let frontend = PathBuf::from(env::var("FRONTEND_DIR").unwrap_or_else(|_| "dist".into()));
     let billing_product_url = env::var("SOCIOBOT_BILLING_PRODUCT_URL")
         .unwrap_or_else(|_| "https://api.sociobot.in/api/v1/products/tutor-session-trace".into());
+    info!(
+        port = if port_supplied { "supplied" } else { "default" },
+        database = if database_supplied {
+            "supplied"
+        } else {
+            "default"
+        },
+        frontend = if frontend_supplied {
+            "supplied"
+        } else {
+            "default"
+        },
+        billing = if billing_supplied {
+            "supplied"
+        } else {
+            "default"
+        },
+        "configuration sources"
+    );
     let router = app(
         AppState::with_billing_product_url(pool, billing_product_url),
         frontend,

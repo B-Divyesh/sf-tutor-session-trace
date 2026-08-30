@@ -12,6 +12,8 @@
     "test:frontend": "vitest run",
     "test:e2e": "node scripts/e2e.mjs",
     "test:platform": "node scripts/platform-checks.mjs",
+    "test:repairs": "node scripts/repair-findings.mjs",
+    "test:live-checkout": "CHECK_LIVE_CHECKOUT=1 node scripts/repair-findings.mjs --grep @claim:paid-checkout",
     "test:recaps": "node scripts/recap-consistency.mjs",
     "preview": "vite preview --host 0.0.0.0"
   },
