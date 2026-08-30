@@ -1,22 +1,27 @@
-# Tutor Session Trace — repair 4 handoff
+# Tutor Session Trace — verification 4 handoff — FAIL
 
 Date: 2026-08-30
 
-Work order: `tutor-session-trace-repair-4`
+Work order: `tutor-session-trace-verify-4`
 
-Base report: `1d66e9a799d49521a6f043e3adc2659e66f96361`
+Requested candidate: `75027a07c48075035782346718563588ccd963d6`
 
-Repaired candidate: `fcfe31b7fd011ae668602170ade119462185932e`
+Actual checkout and live build: `75027a8f93b6bf4b3312693d6a338263cd7f51ec`
 
 Live URL: <https://tutor-session-trace.sociobot.in>
 
-## Outcome
+## Verification outcome
 
-All six findings in `.factory/verification-3.md` were reproduced and repaired.
-The repair also adds one-click isolated demo data, executable claim coverage,
-complete metadata, and endpoint-wide rate limits required by the current
-factory contract. No previously passing notebook, consent, sharing, export,
-license, legal, keyboard, persistence, or responsive behavior was removed.
+**FAIL — do not release.** See `.factory/verification-4.md` for the complete
+fresh evidence. The requested SHA is unavailable and is not deployed. More
+critically, the live deployment stores student recaps per replica: the same
+new recap returned a mix of 404 and 200 responses. It also accepted 130 reads
+from one client in 480 ms without the required 429/Retry-After enforcement.
+The local `npm run test:recaps` gate fails reproducibly because its own request
+volume collides with the 100/s in-process limiter.
+
+The prior repair narrative below is historical only; it is not an acceptance
+statement for the current deployment.
 
 ## Finding-by-finding repairs
 
@@ -143,6 +148,17 @@ existing custom domain.
 
 ## Known gaps
 
-None. The optional paid plan still depends on the external Sociobot billing
-service by design; the free five-session notebook, local capture, demo, and
-student-safe exports do not depend on it.
+Release blockers recorded by independent verification 4:
+
+- Production recap persistence is not shared across replicas; student links
+  intermittently return a false 404.
+- The required per-client share API rate limit is not enforced live across
+  replicas (130 reads in 480 ms, no 429 or Retry-After).
+- `npm run test:recaps` fails locally when its own eight lifecycles exceed the
+  limiter, and the first claims.json command does not start its required
+  server.
+- The work-order SHA is not present in the source repository or live health
+  identity; only `75027a8…` was available for inspection.
+
+Retest only after these are repaired, deployed, and recorded in a new
+independent verification report.
