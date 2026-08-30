@@ -1,116 +1,125 @@
-# Tutor Session Trace — verification 4 handoff — FAIL
+# Tutor Session Trace — repair 5 handoff
 
 Date: 2026-08-30
 
-Work order: `tutor-session-trace-verify-4`
+Work order: `tutor-session-trace-repair-5`
 
-Requested candidate: `75027a07c48075035782346718563588ccd963d6`
+Verifier report commit: `58a04bcbcf69ad023480105d0285d2f4e19c66ec`
 
-Actual checkout and live build: `75027a8f93b6bf4b3312693d6a338263cd7f51ec`
+Repaired candidate: `75027a8f93b6bf4b3312693d6a338263cd7f51ec`
 
 Live URL: <https://tutor-session-trace.sociobot.in>
 
-## Verification outcome
+## Outcome
 
-**FAIL — do not release.** See `.factory/verification-4.md` for the complete
-fresh evidence. The requested SHA is unavailable and is not deployed. More
-critically, the live deployment stores student recaps per replica: the same
-new recap returned a mix of 404 and 200 responses. It also accepted 130 reads
-from one client in 480 ms without the required 429/Retry-After enforcement.
-The local `npm run test:recaps` gate fails reproducibly because its own request
-volume collides with the 100/s in-process limiter.
-
-The prior repair narrative below is historical only; it is not an acceptance
-statement for the current deployment.
+All release-blocking findings in `.factory/verification-4.md` are repaired.
+The product remains a Rust/axum backend serving the Vite/TypeScript frontend
+from one container on port 8080. The researched brief, visual system, demo,
+privacy boundaries, exports, and paid-plan behavior are unchanged.
 
 ## Finding-by-finding repairs
 
-1. **Tutor-only moments in Print / PDF.** The original candidate was reproduced
-   in Chromium print media: both `PUBLIC PDF NOTE` and
-   `PRIVATE TUTOR PDF NOTE` were visible and a 52,599-byte PDF was generated.
-   Private timeline rows now have a stable `.moment-private` marker and the
-   print stylesheet excludes them. The regression creates public and private
-   notes, checks the print layout and generated PDF path, checks Markdown, and
-   opens the real student recap. Private text is absent from every output.
-2. **Production checkout returned 404.** A live one-time USD 19 product was
-   registered in the Sociobot billing catalog and enabled for
-   `tutor-session-trace`. The application still uses only the required
-   Sociobot checkout URL. A fresh GET now returns HTTP 303 to the hosted Dodo
-   checkout. The claim test also checks the public price and redirect host.
-3. **Invalid links erased draft observations.** Link validation now reports an
-   associated live error in place, sets `aria-invalid`, and focuses the bad
-   field without rerendering. Text, attachment type/value, and tutor-only state
-   survive the error. The same form can be corrected and submitted once.
-4. **Manifest lacked install icons.** The manifest now declares original
-   192×192 and 512×512 PNG icons, including a maskable 512 icon. Chromium's
-   installability API reports no icon error, and the service worker precaches
-   the icon and demo shell.
-5. **Offline recap blamed the link.** A network failure while offline now shows
-   `You’re offline`, explains that opening a shared recap needs a connection,
-   and offers `Retry`. It never says the valid link is stale. The regression
-   performs a real online recap load followed by an offline reload.
-6. **Mobile legal links were 24 px high.** Footer links now use designed
-   inline-flex 44×44 px minimum targets. The 390 px regression measures both
-   links in browser layout.
+1. **Replica-local student recaps.** `deploy/containerapp.json` now fixes the
+   service at one replica and mounts the existing product-specific Azure Files
+   share at `/data`. Production SQLite uses
+   `sqlite:///data/trace.db?mode=rwc&vfs=unix-dotfile`; the dot-file VFS is
+   required for Azure Files locking. Startup strips URI options before its
+   local file check. The deployment contract rejects a missing mount, unsafe
+   SQLite URI, scale-out, split revision mode, or mismatched health identity.
+2. **Rate limits disappeared across replicas.** The same enforced one-replica
+   boundary keeps both per-client in-process windows authoritative. A new
+   response-policy test proves 20 creates per minute and 100 share API reads
+   per second, followed by `429` with `Retry-After: 60` and `1` respectively.
+3. **`test:recaps` defeated the limiter.** Its eight lifecycles now enter
+   separate one-second allowance windows. Each lifecycle still performs 12
+   concurrent reads, status inspection, deletion, and six post-delete reads.
+4. **Candidate identity mismatch.** The deployment helper builds with the full
+   source SHA, waits until public `/health` reports that exact string, and then
+   waits for exactly one active revision at 100% traffic.
+5. **Claim commands required a separately started server.** Browser, platform,
+   recap, and response-policy scripts now use `scripts/with-server.mjs`. With
+   no `BASE_URL`, it builds the frontend, starts an isolated temporary SQLite
+   backend, waits for health, runs the requested test, and shuts everything
+   down. With `BASE_URL`, it tests that existing origin.
 
-## Additional contract work
-
-- `/demo` and `?demo=1` now open a complete, realistic lesson in one click.
-  Demo state uses `demo:tutor-session-trace:v1`, never reads or writes the real
-  notebook key, has a persistent status banner, reset, and leave actions.
-- `.factory/claims.json` maps every public product claim to an observable
-  Playwright regression. `.factory/demo.md` documents the sandbox.
-- The landing page now states the job, audience, first action, and three facts
-  in plain words. `.factory/copy-audit.md` records word counts and terminology.
-- Canonical, Open Graph/Twitter, icon, robots, and sitemap metadata were added.
-  The social card derives from the product's original generated notebook art.
-- Every share endpoint now has an IP-aware limiter and returns `Retry-After` on
-  429; create remains protected by the stricter write allowance. `/health` is
-  exempt. Trusted ingress uses the first `X-Forwarded-For` hop while direct
-  public peers cannot bypass a limit by spoofing that header. Forwarded source
-  ports are normalized away so one client cannot receive a new bucket for each
-  connection. Azure Envoy's stable external-address header takes precedence at
-  the managed ingress boundary.
-- `/demo` is a server-recognized route. Startup reports whether each safe
-  configuration source was supplied or defaulted without logging values.
-- The Docker build uses the required stable `rust:1-bookworm` base and accepts
-  source-archive build identity through `BUILD_SHA`.
+The required keyboard sweep also found that the prepared skip-link styling had
+no link in the page. Notebook, legal, loading, error, offline, and student
+recap views now expose a first-focus “Skip to main content” link. Regression
+coverage verifies skip focus, dialog focus containment, Escape restoration,
+and 200% text reflow.
 
 ## Verification evidence
 
-The following passed from the repaired tree:
+Clean local gates:
 
 ```text
 npm ci                                      60 packages; 0 vulnerabilities
 npm audit --audit-level=low                 0 vulnerabilities
 npm run typecheck                           pass
-npm test                                    2 Vitest + container contract + 12 Rust tests
+npm test                                    2 Vitest + 2 container/deploy contracts + 12 Rust tests
 cargo fmt --check                           pass
 cargo clippy --all-targets -- -D warnings   pass
+cargo build --locked --release              pass
 npm run build                               pass; dist/ produced
-BUILD_SHA=012345... cargo build --locked --release
-                                             pass
-npm run test:e2e                            pass
-npm run test:platform                       pass
-npm run test:repairs                        11 claim regressions pass
-npm run test:recaps                         8 lifecycles, concurrent reads pass
-npm run test:live-checkout                  live HTTP 303 checkout pass
-/opt/fleet/lib/verify-url.sh                 pass; 0 console errors
+npm run test:e2e                            pass; desktop + 390px + Axe
+npm run test:platform                       pass; keyboard, dialog, 200%, offline/update, privacy
+npm run test:repairs                        11 targeted/claim regressions pass
+npm run test:recaps                         8 paced lifecycles pass
+npm run test:response-policy                20/21 creates and 100/130 reads pass
+npm run test:live-checkout                  hosted checkout redirect passes
 ```
 
-The release binary also started from a scrubbed environment containing only
-`PATH` and `PORT=8091`. It created its default data/config, served the product,
-reported the injected build identity, and shut down cleanly.
+The first exact claim invocation from a stopped-server state also passed:
 
-Browser coverage includes desktop 1440×900, mobile 390×844, keyboard-only
-session creation and capture, skip navigation, dialog focus and Escape,
-visible focus, 200% text scaling, reduced motion, Axe, same-origin privacy,
-service-worker update, offline tutor reload, offline recap recovery, manifest
-installability, consent rejection, five-session enforcement, exports, shared
-recap deletion, and legal routes. Axe reported zero serious or critical
-issues. Normal page and console errors were zero.
+```text
+npm run test:repairs -- --grep @claim:private-exports
+```
 
-Final local Lighthouse 13.4.1 mobile simulation:
+It built and started its own temporary product server before exercising print,
+PDF, Markdown, and student-recap privacy.
+
+Production verification through the public ingress:
+
+```text
+BASE_URL=https://tutor-session-trace.sociobot.in npm run test:recaps
+  8 lifecycles; 12 concurrent reads each; 6 post-delete reads; pass
+
+BASE_URL=https://tutor-session-trace.sociobot.in npm run test:response-policy
+  creates: 20 allowed, next 429 + Retry-After: 60
+  reads:   100 allowed, next 30 returned 429 + Retry-After: 1
+
+BASE_URL=https://tutor-session-trace.sociobot.in npm run test:e2e
+  desktop + 390px workflow; private note excluded; next task visible;
+  Axe serious/critical 0; console errors 0
+
+BASE_URL=https://tutor-session-trace.sociobot.in npm run test:platform
+  skip navigation, dialog focus, 200% text, reduced motion, service-worker
+  update, offline reload, legal routes, and same-origin privacy pass
+
+BASE_URL=https://tutor-session-trace.sociobot.in npm run test:repairs
+  all 11 targeted/claim regressions pass
+```
+
+Durability was checked against the real revision. A temporary recap was
+created, revision `sf-tutor-session-trace--0000014` was restarted, and the
+same recap returned `200` after restart and on 12 further reads. Its management
+delete returned `204`.
+
+Live response/configuration evidence:
+
+- `/health` reported the exact full source SHA compiled into the deployed image.
+- Container Apps showed `activeRevisionsMode: Single`, min/max replicas `1/1`,
+  one healthy active revision at 100%, and `data-tutor-session-trace` mounted
+  at `/data`.
+- HTML and API responses include CSP, HSTS, `nosniff`, frame denial,
+  no-referrer, restrictive permissions policy, and no-cache for the shell.
+- Hashed JavaScript/CSS use one-year immutable caching.
+- `/opt/fleet/lib/verify-url.sh` against production: HTTP 200, 561 ms, title,
+  `lang=en`, one `h1`, one `main`, zero missing alt labels, zero unlabeled
+  buttons, and zero console errors.
+
+Live Lighthouse 12.8.2 mobile simulation is stored in
+`.factory/evidence/lighthouse.json`:
 
 | Category / metric | Result |
 | --- | ---: |
@@ -118,47 +127,37 @@ Final local Lighthouse 13.4.1 mobile simulation:
 | Accessibility | 100 |
 | Best Practices | 100 |
 | SEO | 100 |
-| LCP | 1,652 ms |
+| LCP | 1,426 ms |
 | CLS | 0 |
-| Total blocking time | 18 ms |
+| Total blocking time | 19 ms |
 
-Production asset sizes are below budget: 29.63 KB JavaScript (10.23 KB gzip),
+Production assets remain below budget: 30.00 KB JavaScript (10.28 KB gzip),
 17.16 KB CSS (4.61 KB gzip), 31.2 KB mobile hero WebP, and 83.9 KB desktop
-hero WebP. The page loads no third-party script, font, tracker, or analytics.
+hero WebP. The runtime contains no third-party script, font, tracker, analytics,
+raw model key, or payment-provider integration.
 
-Evidence files are in `.factory/evidence/`; the exact claim mappings are in
-`.factory/claims.json`. Run all claim checks against a server with:
+## Run and deploy
 
 ```bash
-BASE_URL=http://127.0.0.1:8080 npm run test:repairs
+npm ci
+npm test
+npm run typecheck
+npm run build
+npm run test:e2e
+npm run test:platform
+npm run test:repairs
+npm run test:recaps
+npm run test:response-policy
+scripts/deploy-container.sh "$(git rev-parse HEAD)"
 ```
 
-## Deployment and operations
+The deployment script uses ACR, preserves the custom domain/ingress, applies
+the committed storage and scale boundary, and verifies topology plus live
+identity before returning success.
 
-The container must run with `PORT=8080`. It can boot with no other variable and
-uses SQLite in that mode. Production supplies `DATABASE_URL` from the Container
-App secret so recaps survive revisions and replicas. `/health` returns the
-source commit passed as `BUILD_SHA` at image build time. No secret is committed
-or printed.
+## Known gaps and next steps
 
-Production deployment is an ACR build of the final repository commit followed
-by an update of Azure Container App `sf-tutor-session-trace` in resource group
-`sociobot`. The update preserves the managed PostgreSQL secret binding and the
-existing custom domain.
-
-## Known gaps
-
-Release blockers recorded by independent verification 4:
-
-- Production recap persistence is not shared across replicas; student links
-  intermittently return a false 404.
-- The required per-client share API rate limit is not enforced live across
-  replicas (130 reads in 480 ms, no 429 or Retry-After).
-- `npm run test:recaps` fails locally when its own eight lifecycles exceed the
-  limiter, and the first claims.json command does not start its required
-  server.
-- The work-order SHA is not present in the source repository or live health
-  identity; only `75027a8…` was available for inspection.
-
-Retest only after these are repaired, deployed, and recorded in a new
-independent verification report.
+There are no known release blockers. The single-replica limit is intentional:
+the current rate counters are process-local and SQLite owns one durable Azure
+Files database. Before increasing the replica maximum, move both recap storage
+and rate counters to shared services and add a multi-replica ingress test.

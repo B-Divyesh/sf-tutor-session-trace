@@ -87,13 +87,25 @@ jq --exit-status --arg image "$image" '
   ))
 ' <<<"$actual" >/dev/null
 
-active_revisions="$(az containerapp revision list \
-  --resource-group "$resource_group" \
-  --name "$app_name" \
-  --query '[?properties.active]' \
-  --output json)"
-jq --exit-status 'length == 1 and .[0].properties.trafficWeight == 100' \
-  <<<"$active_revisions" >/dev/null
+revisions_converged="false"
+for _ in $(seq 1 60); do
+  active_revisions="$(az containerapp revision list \
+    --resource-group "$resource_group" \
+    --name "$app_name" \
+    --query '[?properties.active]' \
+    --output json)"
+  if jq --exit-status \
+    'length == 1 and .[0].properties.trafficWeight == 100' \
+    <<<"$active_revisions" >/dev/null; then
+    revisions_converged="true"
+    break
+  fi
+  sleep 5
+done
+if [[ "$revisions_converged" != "true" ]]; then
+  echo "Container Apps did not converge to one active revision." >&2
+  exit 1
+fi
 
 jq --exit-status --arg sha "$source_sha" \
   '.status == "ok" and .build == $sha' <<<"$health" >/dev/null
