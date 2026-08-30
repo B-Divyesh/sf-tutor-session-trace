@@ -27,6 +27,11 @@ async function request(path, options) {
 }
 
 for (let run = 1; run <= 8; run += 1) {
+  // A lifecycle deliberately fans out reads. Keep consecutive lifecycles in
+  // separate one-second allowance windows so this consistency check tests
+  // persistence without defeating the response-policy gate it also relies on.
+  if (run > 1) await new Promise(resolve => setTimeout(resolve, 1_050));
+
   const created = await request('/api/shares', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },

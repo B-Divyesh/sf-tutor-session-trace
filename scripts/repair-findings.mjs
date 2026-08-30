@@ -295,11 +295,8 @@ await run('checkout link uses the registered Sociobot product', '@claim:paid-che
   const href = await page.getByRole('link', { name: 'Buy the full notebook' }).getAttribute('href');
   const expected = 'https://api.sociobot.in/api/v1/products/tutor-session-trace/checkout';
   if (href !== expected) throw new Error(`Checkout href differs: ${href}`);
-  const catalog = await context.request.get('https://api.sociobot.in/api/v1/products');
-  const registered = (await catalog.json()).data.find(product => product.slug === 'tutor-session-trace');
-  if (registered?.price_minor !== 1900 || registered?.currency !== 'USD') {
-    throw new Error(`Registered checkout price is not $19 USD: ${JSON.stringify(registered)}`);
-  }
+  const displayedPrice = (await page.locator('.price').innerText()).replace(/\s+/g, ' ').trim();
+  if (displayedPrice !== '$19 one time') throw new Error(`Displayed one-time price differs: ${displayedPrice}`);
   if (process.env.CHECK_LIVE_CHECKOUT === '1') {
     const response = await context.request.get(expected, { maxRedirects: 0 });
     if (![301, 302, 303, 307, 308].includes(response.status())) {

@@ -64,13 +64,16 @@ checks.
 
 Run `npm run test:repairs` for print/PDF privacy, invalid-link recovery, PWA
 installability, offline recap recovery, demo isolation, the five-session
-limit, checkout-link wiring, and 390 px legal-link targets. Set `BASE_URL` to
-choose the running product. `npm run test:live-checkout` additionally verifies
+limit, checkout-link wiring, and 390 px legal-link targets. The command builds
+and starts an isolated local server when `BASE_URL` is unset. Set `BASE_URL`
+to test an existing product. `npm run test:live-checkout` additionally verifies
 that the production Sociobot endpoint redirects to hosted checkout.
 
-Run `npm run test:recaps` against the local server (or set `BASE_URL` to a
-deployed origin) to execute eight create/read/status/delete lifecycles with
-concurrent reads. It leaves no recap records behind.
+Run `npm run test:recaps` to execute eight paced create/read/status/delete
+lifecycles with concurrent reads. Run `npm run test:response-policy` to verify
+the 100-per-second read and 20-per-minute create limits, including
+`Retry-After`. Both commands start an isolated server when `BASE_URL` is unset
+and remove the recap fixtures they create.
 
 The backend tests exercise consent rejection, private-field rejection,
 server-verified paid expiry enforcement, legal deep-link responses,
@@ -93,12 +96,12 @@ docker run --rm -p 8080:8080 -v trace-data:/data tutor-session-trace
 Omitting `--build-arg BUILD_SHA` is supported for local builds and produces a
 `dev` identity. The Docker build never reads `.git`.
 
-The multi-stage image runs as the unprivileged `trace` user. The factory
-container deployment provisions a product-specific database on the supported
-managed PostgreSQL service and supplies its URL as a Container Apps secret.
-That shared database keeps recap create/read/delete consistent as replicas
-scale. The deployment helper verifies that live `/health` reports the exact
-committed SHA it built. TLS and public routing belong at the deployment layer.
+The multi-stage image runs as the unprivileged `trace` user. The committed
+Container Apps configuration mounts the product's durable Azure Files share at
+`/data` and fixes the service at one replica. That boundary keeps SQLite recap
+state and the per-client rate windows consistent. `scripts/deploy-container.sh`
+builds the exact committed SHA, applies that configuration, and rejects a live
+health identity mismatch. TLS and public routing belong at the deployment layer.
 
 ## Privacy and limits
 
