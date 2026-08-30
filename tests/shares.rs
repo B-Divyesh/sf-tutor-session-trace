@@ -392,6 +392,43 @@ async fn forwarded_source_ports_share_one_rate_window_behind_a_proxy() {
 }
 
 #[tokio::test]
+async fn envoy_external_address_is_the_stable_ingress_rate_key() {
+    let service = test_app().await;
+    for request_number in 0..20 {
+        let response = service
+            .clone()
+            .oneshot(
+                Request::post("/api/shares")
+                    .header("content-type", "application/json")
+                    .header(
+                        "x-envoy-external-address",
+                        format!("198.51.100.42:{}", 10_000 + request_number),
+                    )
+                    .header("x-forwarded-for", format!("203.0.113.{request_number}"))
+                    .body(Body::from(valid_payload().to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::CREATED);
+    }
+
+    let blocked = service
+        .oneshot(
+            Request::post("/api/shares")
+                .header("content-type", "application/json")
+                .header("x-envoy-external-address", "198.51.100.42:20000")
+                .header("x-forwarded-for", "203.0.113.250")
+                .body(Body::from(valid_payload().to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(blocked.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(blocked.headers()["retry-after"], "60");
+}
+
+#[tokio::test]
 async fn every_share_endpoint_has_a_bounded_rate_window_and_retry_header() {
     let service = test_app().await;
     for _ in 0..100 {

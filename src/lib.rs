@@ -518,11 +518,19 @@ async fn rate_limit_api(
 
 fn client_key(client: SocketAddr, headers: &HeaderMap) -> String {
     let peer = client.ip();
+    if let Some(external_ip) = headers
+        .get("x-envoy-external-address")
+        .and_then(|value| value.to_str().ok())
+        .and_then(parse_forwarded_ip)
+    {
+        return external_ip.to_string();
+    }
     let trusted_proxy = peer.is_loopback()
         || match peer {
             std::net::IpAddr::V4(address) => address.is_private(),
             std::net::IpAddr::V6(address) => address.is_unique_local(),
-        };
+        }
+        || (headers.contains_key("x-forwarded-proto") && headers.contains_key("x-request-id"));
     if trusted_proxy {
         if let Some(forwarded_ip) = headers
             .get("x-forwarded-for")
