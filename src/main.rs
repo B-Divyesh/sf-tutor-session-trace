@@ -20,8 +20,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let billing_supplied = env::var_os("SOCIOBOT_BILLING_PRODUCT_URL").is_some();
     let port: u16 = env::var("PORT").unwrap_or_else(|_| "8080".into()).parse()?;
     let database_url = env::var("DATABASE_URL").unwrap_or_else(|_| "sqlite://data/trace.db".into());
-    if let Some(path) = database_url.strip_prefix("sqlite://") {
-        let path = std::path::Path::new(path);
+    if let Some(path_and_query) = database_url.strip_prefix("sqlite://") {
+        let path = std::path::Path::new(path_and_query.split('?').next().unwrap_or(path_and_query));
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }

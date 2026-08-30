@@ -98,8 +98,9 @@ Omitting `--build-arg BUILD_SHA` is supported for local builds and produces a
 
 The multi-stage image runs as the unprivileged `trace` user. The committed
 Container Apps configuration mounts the product's durable Azure Files share at
-`/data` and fixes the service at one replica. That boundary keeps SQLite recap
-state and the per-client rate windows consistent. `scripts/deploy-container.sh`
+`/data`, selects SQLite's Azure Files-safe dot-file locking, and fixes the
+service at one replica. That boundary keeps recap state and the per-client rate
+windows consistent. `scripts/deploy-container.sh`
 builds the exact committed SHA, applies that configuration, and rejects a live
 health identity mismatch. TLS and public routing belong at the deployment layer.
 

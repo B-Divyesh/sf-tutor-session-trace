@@ -12,6 +12,10 @@
             {
               "name": "PORT",
               "value": "8080"
+            },
+            {
+              "name": "DATABASE_URL",
+              "value": "sqlite:///data/trace.db?mode=rwc&vfs=unix-dotfile"
             }
           ],
           "resources": {
