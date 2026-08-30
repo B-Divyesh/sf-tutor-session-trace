@@ -62,7 +62,9 @@ license, legal, keyboard, persistence, or responsive behavior was removed.
 - Every share endpoint now has an IP-aware limiter and returns `Retry-After` on
   429; create remains protected by the stricter write allowance. `/health` is
   exempt. Trusted ingress uses the first `X-Forwarded-For` hop while direct
-  public peers cannot bypass a limit by spoofing that header.
+  public peers cannot bypass a limit by spoofing that header. Forwarded source
+  ports are normalized away so one client cannot receive a new bucket for each
+  connection.
 - `/demo` is a server-recognized route. Startup reports whether each safe
   configuration source was supplied or defaulted without logging values.
 - The Docker build uses the required stable `rust:1-bookworm` base and accepts
@@ -76,7 +78,7 @@ The following passed from the repaired tree:
 npm ci                                      60 packages; 0 vulnerabilities
 npm audit --audit-level=low                 0 vulnerabilities
 npm run typecheck                           pass
-npm test                                    2 Vitest + container contract + 10 Rust tests
+npm test                                    2 Vitest + container contract + 11 Rust tests
 cargo fmt --check                           pass
 cargo clippy --all-targets -- -D warnings   pass
 npm run build                               pass; dist/ produced

@@ -34,15 +34,18 @@ fn test_frontend() -> PathBuf {
 }
 
 async fn test_app() -> axum::Router {
+    test_app_with_peer("203.0.113.10:443").await
+}
+
+async fn test_app_with_peer(peer: &str) -> axum::Router {
     let pool = database_pool_options()
         .max_connections(1)
         .connect("sqlite::memory:")
         .await
         .unwrap();
     sqlx::migrate!().run(&pool).await.unwrap();
-    app(AppState::new(pool), test_frontend()).layer(Extension(ConnectInfo(
-        "203.0.113.10:443".parse::<SocketAddr>().unwrap(),
-    )))
+    app(AppState::new(pool), test_frontend())
+        .layer(Extension(ConnectInfo(peer.parse::<SocketAddr>().unwrap())))
 }
 
 fn valid_payload() -> Value {
@@ -347,6 +350,38 @@ async fn forwarded_headers_cannot_bypass_the_peer_rate_limit() {
             Request::post("/api/shares")
                 .header("content-type", "application/json")
                 .header("x-forwarded-for", "203.0.113.250")
+                .body(Body::from(valid_payload().to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(blocked.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(blocked.headers()["retry-after"], "60");
+}
+
+#[tokio::test]
+async fn forwarded_source_ports_share_one_rate_window_behind_a_proxy() {
+    let service = test_app_with_peer("10.0.0.8:443").await;
+    for source_port in 10_000..10_020 {
+        let response = service
+            .clone()
+            .oneshot(
+                Request::post("/api/shares")
+                    .header("content-type", "application/json")
+                    .header("x-forwarded-for", format!("198.51.100.42:{source_port}"))
+                    .body(Body::from(valid_payload().to_string()))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::CREATED);
+    }
+
+    let blocked = service
+        .oneshot(
+            Request::post("/api/shares")
+                .header("content-type", "application/json")
+                .header("x-forwarded-for", "198.51.100.42:20000")
                 .body(Body::from(valid_payload().to_string()))
                 .unwrap(),
         )

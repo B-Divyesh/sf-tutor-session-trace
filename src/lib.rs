@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    net::SocketAddr,
+    net::{IpAddr, SocketAddr},
     path::PathBuf,
     sync::{Arc, Once},
     time::{Duration, Instant},
@@ -524,17 +524,26 @@ fn client_key(client: SocketAddr, headers: &HeaderMap) -> String {
             std::net::IpAddr::V6(address) => address.is_unique_local(),
         };
     if trusted_proxy {
-        if let Some(forwarded) = headers
+        if let Some(forwarded_ip) = headers
             .get("x-forwarded-for")
             .and_then(|value| value.to_str().ok())
             .and_then(|value| value.split(',').next())
             .map(str::trim)
             .filter(|value| !value.is_empty())
+            .and_then(parse_forwarded_ip)
         {
-            return forwarded.to_owned();
+            return forwarded_ip.to_string();
         }
     }
     peer.to_string()
+}
+
+fn parse_forwarded_ip(value: &str) -> Option<IpAddr> {
+    let value = value.trim_matches('"');
+    value
+        .parse::<IpAddr>()
+        .ok()
+        .or_else(|| value.parse::<SocketAddr>().ok().map(|address| address.ip()))
 }
 
 fn random_token(length: usize) -> String {
