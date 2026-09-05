@@ -1,163 +1,78 @@
-# Tutor Session Trace — repair 5 handoff
+# Verify coding-lesson notes and student recaps — FAIL
 
-Date: 2026-08-30
+Date: 2026-09-05
 
-Work order: `tutor-session-trace-repair-5`
+Work order: `tutor-session-trace-verify-5`
 
-Verifier report commit: `58a04bcbcf69ad023480105d0285d2f4e19c66ec`
-
-Repaired candidate: `75027a8f93b6bf4b3312693d6a338263cd7f51ec`
+Implementation candidate: `8cf00b6edd8b2873618efd1aa110034aa1d62e51`
 
 Live URL: <https://tutor-session-trace.sociobot.in>
 
-## Outcome
+## Result
 
-All release-blocking findings in `.factory/verification-4.md` are repaired.
-The product remains a Rust/axum backend serving the Vite/TypeScript frontend
-from one container on port 8080. The researched brief, visual system, demo,
-privacy boundaries, exports, and paid-plan behavior are unchanged.
+Independent verification failed with **6 findings** and **2 untested public
+claims**. Product code was not changed. Full evidence and reproduction details
+are in `.factory/verification-5.md`.
 
-## Finding-by-finding repairs
+The main failure is deployment state. The active product revision reports the
+candidate SHA, but it runs three replicas with no `/data` volume mount. Fresh
+recap reads alternate between 200 and 404, and live rate limits are not
+enforced across the replicas.
 
-1. **Replica-local student recaps.** `deploy/containerapp.json` now fixes the
-   service at one replica and mounts the existing product-specific Azure Files
-   share at `/data`. Production SQLite uses
-   `sqlite:///data/trace.db?mode=rwc&vfs=unix-dotfile`; the dot-file VFS is
-   required for Azure Files locking. Startup strips URI options before its
-   local file check. The deployment contract rejects a missing mount, unsafe
-   SQLite URI, scale-out, split revision mode, or mismatched health identity.
-2. **Rate limits disappeared across replicas.** The same enforced one-replica
-   boundary keeps both per-client in-process windows authoritative. A new
-   response-policy test proves 20 creates per minute and 100 share API reads
-   per second, followed by `429` with `Retry-After: 60` and `1` respectively.
-3. **`test:recaps` defeated the limiter.** Its eight lifecycles now enter
-   separate one-second allowance windows. Each lifecycle still performs 12
-   concurrent reads, status inspection, deletion, and six post-delete reads.
-4. **Candidate identity mismatch.** The deployment helper builds with the full
-   source SHA, waits until public `/health` reports that exact string, and then
-   waits for exactly one active revision at 100% traffic.
-5. **Claim commands required a separately started server.** Browser, platform,
-   recap, and response-policy scripts now use `scripts/with-server.mjs`. With
-   no `BASE_URL`, it builds the frontend, starts an isolated temporary SQLite
-   backend, waits for health, runs the requested test, and shuts everything
-   down. With `BASE_URL`, it tests that existing origin.
+## What passed
 
-The required keyboard sweep also found that the prepared skip-link styling had
-no link in the page. Notebook, legal, loading, error, offline, and student
-recap views now expose a first-focus “Skip to main content” link. Regression
-coverage verifies skip focus, dialog focus containment, Escape restoration,
-and 200% text reflow.
+- All ten exact declared claim commands ran from a clean checkout; nine passed
+  fully and the lifecycle command exposed incomplete expiry evidence.
+- `npm test`, typecheck, build, format, Clippy, and release build passed.
+- Local E2E, platform, repair, recap, and response-policy suites passed.
+- Demo isolation, reset, real-data preservation, offline/update behavior,
+  privacy request capture, legal routes, checkout, PDF/Markdown privacy,
+  keyboard checks, 200% text, and Axe checks passed.
+- Live `/health` returned the requested SHA twelve times, and frontend outputs
+  matched the clean candidate build.
+- Fresh Lighthouse scored 100 in all four categories.
 
-## Verification evidence
+## What failed
 
-Clean local gates:
+1. Live recaps are inconsistent across replica-local databases.
+2. Live create and read allowances do not return the required 429 responses.
+3. Unknown routes return an empty 404 page.
+4. Actual expiry and expired-record cleanup are public but untested claims.
+5. Landing keyboard and heading structure has duplicate skip links, an invalid
+   visible heading order, and no focus move to route headings.
+6. Required landing sections and footer build information are missing.
 
-```text
-npm ci                                      60 packages; 0 vulnerabilities
-npm audit --audit-level=low                 0 vulnerabilities
-npm run typecheck                           pass
-npm test                                    2 Vitest + 2 container/deploy contracts + 12 Rust tests
-cargo fmt --check                           pass
-cargo clippy --all-targets -- -D warnings   pass
-cargo build --locked --release              pass
-npm run build                               pass; dist/ produced
-npm run test:e2e                            pass; desktop + 390px + Axe
-npm run test:platform                       pass; keyboard, dialog, 200%, offline/update, privacy
-npm run test:repairs                        11 targeted/claim regressions pass
-npm run test:recaps                         8 paced lifecycles pass
-npm run test:response-policy                20/21 creates and 100/130 reads pass
-npm run test:live-checkout                  hosted checkout redirect passes
-```
+## Verification commands
 
-The first exact claim invocation from a stopped-server state also passed:
-
-```text
-npm run test:repairs -- --grep @claim:private-exports
-```
-
-It built and started its own temporary product server before exercising print,
-PDF, Markdown, and student-recap privacy.
-
-Production verification through the public ingress:
-
-```text
-BASE_URL=https://tutor-session-trace.sociobot.in npm run test:recaps
-  8 lifecycles; 12 concurrent reads each; 6 post-delete reads; pass
-
-BASE_URL=https://tutor-session-trace.sociobot.in npm run test:response-policy
-  creates: 20 allowed, next 429 + Retry-After: 60
-  reads:   100 allowed, next 30 returned 429 + Retry-After: 1
-
-BASE_URL=https://tutor-session-trace.sociobot.in npm run test:e2e
-  desktop + 390px workflow; private note excluded; next task visible;
-  Axe serious/critical 0; console errors 0
-
-BASE_URL=https://tutor-session-trace.sociobot.in npm run test:platform
-  skip navigation, dialog focus, 200% text, reduced motion, service-worker
-  update, offline reload, legal routes, and same-origin privacy pass
-
-BASE_URL=https://tutor-session-trace.sociobot.in npm run test:repairs
-  all 11 targeted/claim regressions pass
-```
-
-Durability was checked against the real revision. A temporary recap was
-created, revision `sf-tutor-session-trace--0000014` was restarted, and the
-same recap returned `200` after restart and on 12 further reads. Its management
-delete returned `204`.
-
-Live response/configuration evidence:
-
-- `/health` reported the exact full source SHA compiled into the deployed image.
-- Container Apps showed `activeRevisionsMode: Single`, min/max replicas `1/1`,
-  one healthy active revision at 100%, and `data-tutor-session-trace` mounted
-  at `/data`.
-- HTML and API responses include CSP, HSTS, `nosniff`, frame denial,
-  no-referrer, restrictive permissions policy, and no-cache for the shell.
-- Hashed JavaScript/CSS use one-year immutable caching.
-- `/opt/fleet/lib/verify-url.sh` against production: HTTP 200, 561 ms, title,
-  `lang=en`, one `h1`, one `main`, zero missing alt labels, zero unlabeled
-  buttons, and zero console errors.
-
-Live Lighthouse 12.8.2 mobile simulation is stored in
-`.factory/evidence/lighthouse.json`:
-
-| Category / metric | Result |
-| --- | ---: |
-| Performance | 100 |
-| Accessibility | 100 |
-| Best Practices | 100 |
-| SEO | 100 |
-| LCP | 1,426 ms |
-| CLS | 0 |
-| Total blocking time | 19 ms |
-
-Production assets remain below budget: 30.00 KB JavaScript (10.28 KB gzip),
-17.16 KB CSS (4.61 KB gzip), 31.2 KB mobile hero WebP, and 83.9 KB desktop
-hero WebP. The runtime contains no third-party script, font, tracker, analytics,
-raw model key, or payment-provider integration.
-
-## Run and deploy
+From a clean checkout:
 
 ```bash
 npm ci
+npm audit --audit-level=low
 npm test
 npm run typecheck
 npm run build
+cargo fmt --check
+cargo clippy --all-targets -- -D warnings
+BUILD_SHA=8cf00b6edd8b2873618efd1aa110034aa1d62e51 cargo build --locked --release
 npm run test:e2e
 npm run test:platform
 npm run test:repairs
 npm run test:recaps
 npm run test:response-policy
-scripts/deploy-container.sh "$(git rev-parse HEAD)"
+BASE_URL=https://tutor-session-trace.sociobot.in npm run test:e2e
+BASE_URL=https://tutor-session-trace.sociobot.in npm run test:platform
+BASE_URL=https://tutor-session-trace.sociobot.in npm run test:repairs
+BASE_URL=https://tutor-session-trace.sociobot.in npm run test:recaps
+BASE_URL=https://tutor-session-trace.sociobot.in npm run test:response-policy
 ```
 
-The deployment script uses ACR, preserves the custom domain/ingress, applies
-the committed storage and scale boundary, and verifies topology plus live
-identity before returning success.
+The last two live commands fail as recorded in the verification report.
 
-## Known gaps and next steps
+## Handoff
 
-There are no known release blockers. The single-replica limit is intentional:
-the current rate counters are process-local and SQLite owns one durable Azure
-Files database. Before increasing the replica maximum, move both recap storage
-and rate counters to shared services and add a multi-replica ingress test.
+Apply only the product-specific committed Container App configuration: one
+replica and the existing product Azure Files mount at `/data`. Then rerun the
+full live suite, including a safe restart persistence test after the mount is
+confirmed. Repair the four site and claim findings before the next independent
+verification.
