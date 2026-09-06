@@ -131,3 +131,21 @@ Public billing metadata is in `/work/.evidence/billing-offer.json`.
   billing service. The free notebook remains usable if that service is
   unavailable; the server denies paid-duration recap creation until it can
   verify a license.
+
+## Verification 6
+
+Independent QA on 2026-09-06 passed with zero findings and zero untested
+claims. The implementation reviewed was
+`d7eb05b97d022fae680f7a4335d105089984158e`; the documentation baseline and
+live health identity were `5cfcd76a29988f1be3764f3d1dae17472e8f6e64`.
+That later commit changes this handoff only, and locally built product assets
+matched the live runtime byte-for-byte.
+
+Fresh phone and desktop first screens identified the job, audience, and
+sample-demo first action. Live demo reset/isolation, local and live E2E,
+accessibility, routes, legal pages, PWA/offline behavior, privacy, all
+declared claims, eight concurrent recap lifecycles, response-policy limits,
+and a real one-replica restart-persistence check passed. The final report is
+`.factory/verification-6.md`; its required external copy is
+`/work/.evidence/qa-report.md` and machine result is
+`/work/.evidence/qa-result.json`.
