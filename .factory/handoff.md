@@ -1,50 +1,85 @@
-# Verify coding-lesson notes and student recaps — FAIL
+# Tutor Session Trace repair handoff
 
-Date: 2026-09-05
-
-Work order: `tutor-session-trace-verify-5`
-
-Implementation candidate: `8cf00b6edd8b2873618efd1aa110034aa1d62e51`
+Date: 2026-09-06
 
 Live URL: <https://tutor-session-trace.sociobot.in>
 
-## Result
+## Versions
 
-Independent verification failed with **6 findings** and **2 untested public
-claims**. Product code was not changed. Full evidence and reproduction details
-are in `.factory/verification-5.md`.
+- Implementation and deployed image: `d7eb05b97d022fae680f7a4335d105089984158e`
+- Documentation commit: recorded after this handoff update
+- Live `/health`: `{"build":"d7eb05b97d022fae680f7a4335d105089984158e","status":"ok"}`
 
-The main failure is deployment state. The active product revision reports the
-candidate SHA, but it runs three replicas with no `/data` volume mount. Fresh
-recap reads alternate between 200 and 404, and live rate limits are not
-enforced across the replicas.
+## What changed
 
-## What passed
+- Applied the committed product deployment boundary to the live Container App:
+  one active revision, min/max replicas `1`, Azure Files mounted at `/data`,
+  and SQLite dot-file locking enabled. The mounted product storage registration
+  is `data-tutor-session-trace`.
+- Added a designed HTTP 404 page with a title, one h1, main landmark, product
+  navigation, and a route back to the notebook. Static assets are explicitly
+  served before the 404 fallback.
+- Added periodic expired-recap cleanup and outcome tests for expiry denial,
+  removal on open, and routine cleanup. The claims file now declares the
+  cleanup claim and exact runnable tests.
+- Repaired the landing outline and navigation behavior: one skip link, h1
+  before lower-level headings, History API navigation, route-heading focus,
+  and polite route announcements.
+- Completed the landing flow with How it works, privacy/non-goals, and the
+  $19 one-time plan section. Added the Param Factory attribution and version
+  to every standard footer, including student recaps.
+- Added the plain verb-first catalog description in
+  `.factory/catalog-description.txt` and copied it to
+  `/work/.evidence/catalog-description.txt`.
 
-- All ten exact declared claim commands ran from a clean checkout; nine passed
-  fully and the lifecycle command exposed incomplete expiry evidence.
-- `npm test`, typecheck, build, format, Clippy, and release build passed.
-- Local E2E, platform, repair, recap, and response-policy suites passed.
-- Demo isolation, reset, real-data preservation, offline/update behavior,
-  privacy request capture, legal routes, checkout, PDF/Markdown privacy,
-  keyboard checks, 200% text, and Axe checks passed.
-- Live `/health` returned the requested SHA twelve times, and frontend outputs
-  matched the clean candidate build.
-- Fresh Lighthouse scored 100 in all four categories.
+## Current verification
 
-## What failed
+Fresh desktop and phone browser contexts opened the live page without
+scrolling. Both reported:
 
-1. Live recaps are inconsistent across replica-local databases.
-2. Live create and read allowances do not return the required 429 responses.
-3. Unknown routes return an empty 404 page.
-4. Actual expiry and expired-record cleanup are public but untested claims.
-5. Landing keyboard and heading structure has duplicate skip links, an invalid
-   visible heading order, and no focus move to route headings.
-6. Required landing sections and footer build information are missing.
+- Job: **Record coding lessons and share next steps**
+- Audience: one-to-one coding tutors using a call or shared editor
+- First action: **Try it with sample data**
 
-## Verification commands
+The action was visible at 1440 × 900 and 390 × 844. Fresh screenshots are in
+`/work/.evidence/repair-6-desktop-first-screen.png` and
+`/work/.evidence/repair-6-phone-first-screen.png`.
 
-From a clean checkout:
+The live deployment now reports:
+
+```text
+active revision: sf-tutor-session-trace--0000017
+active traffic: 100%
+replicas: 1
+min/max replicas: 1/1
+mount: /data (AzureFile)
+```
+
+Live backend checks passed:
+
+- Eight create/read/status/delete lifecycles with twelve concurrent reads each
+  passed through the public URL.
+- The create allowance accepted 20 requests and returned `429` with
+  `Retry-After: 60` on request 21. The read allowance returned 100 × `404`
+  then 30 × `429` with `Retry-After: 1`.
+- A harmless consented recap survived an explicit restart of the one active
+  product revision, was read after health recovered, and was deleted.
+- Live E2E, platform, repair, privacy, demo, offline, PWA, keyboard, route,
+  404, and Axe flows passed. The one-click demo showed Mina's recursive-tree
+  sample, retained its demo label, reset its change, and left real storage
+  unchanged.
+- `verify-url.sh` passed: 200 response, title, `lang=en`, one h1, main,
+  image alt text, labeled buttons, and no captured console errors.
+- Live Lighthouse 13.4.1: Performance 100, Accessibility 100, Best
+  Practices 100, SEO 100; LCP 1,351 ms, CLS 0, TBT 0. Evidence:
+  `/work/.evidence/lighthouse-repair-6.json`.
+
+The only initially failed live command was the response-policy check run
+immediately after the eight recap lifecycles. Those eight creates correctly
+occupied the same one-minute allowance, so create 13 returned `429`. After a
+fresh 60-second window, the exact response-policy command passed in full.
+
+## Commands run
 
 ```bash
 npm ci
@@ -54,25 +89,45 @@ npm run typecheck
 npm run build
 cargo fmt --check
 cargo clippy --all-targets -- -D warnings
-BUILD_SHA=8cf00b6edd8b2873618efd1aa110034aa1d62e51 cargo build --locked --release
+BUILD_SHA=dev cargo build --locked --release
 npm run test:e2e
 npm run test:platform
 npm run test:repairs
 npm run test:recaps
 npm run test:response-policy
-BASE_URL=https://tutor-session-trace.sociobot.in npm run test:e2e
-BASE_URL=https://tutor-session-trace.sociobot.in npm run test:platform
-BASE_URL=https://tutor-session-trace.sociobot.in npm run test:repairs
-BASE_URL=https://tutor-session-trace.sociobot.in npm run test:recaps
-BASE_URL=https://tutor-session-trace.sociobot.in npm run test:response-policy
 ```
 
-The last two live commands fail as recorded in the verification report.
+All commands passed. The release binary was also started with only `PATH` and
+`PORT` and served `/health` with the `dev` build identity.
 
-## Handoff
+Every exact local claim command in `.factory/claims.json` passed from the
+clean setup, including the separate Rust expiry and cleanup commands. The
+production checkout claim also passed:
 
-Apply only the product-specific committed Container App configuration: one
-replica and the existing product Azure Files mount at `/data`. Then rerun the
-full live suite, including a safe restart persistence test after the mount is
-confirmed. Repair the four site and claim findings before the next independent
-verification.
+```bash
+BASE_URL=https://tutor-session-trace.sociobot.in npm run test:live-checkout
+```
+
+The $19 one-time checkout opened the registered Sociobot hosted checkout.
+Public billing metadata is in `/work/.evidence/billing-offer.json`.
+
+## Earlier findings
+
+| Finding | Current status |
+| --- | --- |
+| Replica-local recaps and ineffective live rate limits | Fixed by the applied one-replica `/data` mount; live consistency, allowance, and restart checks pass. |
+| Empty 404 response | Fixed; live unknown route returns a designed 404 document and HTTP 404. |
+| Expiry and cleanup claims untested | Fixed; declared outcome tests cover exact expiry, denial, removal, and routine cleanup. |
+| Duplicate skip link, heading order, no route focus | Fixed; browser regression confirms one skip link, h1-first outline, focus, and announcement. |
+| Landing sections and footer build information missing | Fixed and tested on the live landing page and student recap. |
+| Earlier paid expiry, checkout, PDF privacy, PWA, invalid-link, offline recap, legal-route, and touch-target findings | Remain fixed; local and live regression suites pass. |
+
+## Known limits and next steps
+
+- Links that existed only in the prior unmounted replica-local databases could
+  not be migrated because they were already non-durable. New links use the
+  mounted durable SQLite file and passed restart persistence verification.
+- Paid license verification and checkout remain dependent on the Sociobot
+  billing service. The free notebook remains usable if that service is
+  unavailable; the server denies paid-duration recap creation until it can
+  verify a license.
