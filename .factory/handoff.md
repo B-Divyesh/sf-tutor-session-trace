@@ -149,3 +149,22 @@ and a real one-replica restart-persistence check passed. The final report is
 `.factory/verification-6.md`; its required external copy is
 `/work/.evidence/qa-report.md` and machine result is
 `/work/.evidence/qa-result.json`.
+
+## Review 1
+
+Fresh strict review on 2026-09-06 passed with zero findings and zero untested
+claims. It reviewed implementation `d7eb05b97d022fae680f7a4335d105089984158e`
+from documentation checkout
+`c1f4600c976bc14df0ad1db58087e6167f534bb1`; live health remained the
+documentation-only predecessor `5cfcd76a29988f1be3764f3d1dae17472e8f6e64`.
+Fresh local production HTML, JavaScript, CSS, and icon bytes matched the live
+runtime.
+
+Fresh phone and desktop pages showed the coding-lesson recording job,
+one-to-one tutor audience, and sample-data first action before scrolling. The
+demo sample, persistent label, reset, exit, and separate real storage passed.
+Every exact declared claim command passed from the clean checkout. Local and
+live E2E, Axe integration, recap consistency, response-policy, legal routes,
+designed 404, privacy, and `verify-url.sh` checks passed. The review report is
+`.factory/review-1.md`; required external handoff files are
+`/work/.evidence/qa-report.md` and `/work/.evidence/qa-result.json`.
