@@ -3,7 +3,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { existsSync } from 'node:fs';
 
 const base = (process.env.BASE_URL || 'http://127.0.0.1:8080').replace(/\/$/, '');
-const requestedClaim = process.argv.find(argument => argument.startsWith('@claim:'));
+const requestedClaim = process.argv.find(argument => argument.startsWith('@'));
 const workerChrome = '/opt/pw-browsers/chromium-1208/chrome-linux64/chrome';
 const executablePath = process.env.CHROMIUM_PATH || (existsSync(workerChrome) ? workerChrome : undefined);
 const browser = await chromium.launch({ executablePath });
@@ -204,7 +204,7 @@ await run('sharing requires recorded consent', '@claim:consent-required', async 
   await context.close();
 });
 
-await run('shared recaps expire, count opens, and can be deleted', '@claim:shared-recap-lifecycle', async () => {
+await run('shared recaps count opens and can be deleted', '@regression:shared-recap-lifecycle', async () => {
   const context = await browser.newContext();
   const created = await context.request.post(`${base}/api/shares`, {
     data: {
@@ -284,6 +284,38 @@ await run('mobile legal links have 44px targets', '@claim:mobile-touch-targets',
     const box = await page.getByRole('contentinfo').getByRole('link', { name, exact: true }).boundingBox();
     if (!box || box.width < 44 || box.height < 44) throw new Error(`${name} target is below 44px: ${JSON.stringify(box)}`);
   }
+  await context.close();
+});
+
+await run('routes keep a clear outline and show a designed missing-page response', '@regression:site-structure', async () => {
+  const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  const page = await context.newPage();
+  await page.goto(base, { waitUntil: 'networkidle' });
+  const headingOrder = await page.locator('h1, h2, h3').evaluateAll(headings => headings.map(heading => heading.tagName));
+  if (headingOrder[0] !== 'H1') throw new Error(`Heading outline starts below h1: ${headingOrder.join(', ')}`);
+  if (await page.locator('a.skip-link').count() !== 1) throw new Error('The page rendered more than one skip link');
+  for (const name of ['How it works', 'Privacy and limits', 'Full notebook plan']) {
+    if (!(await page.getByRole('heading', { name, exact: true }).isVisible())) throw new Error(`Landing section is missing: ${name}`);
+  }
+  const footerText = await page.getByRole('contentinfo').innerText();
+  if (!footerText.includes('Built by Param Factory') || !footerText.includes('v1.0.0')) throw new Error(`Footer build information is missing: ${footerText}`);
+
+  await page.getByRole('contentinfo').getByRole('link', { name: 'Privacy', exact: true }).click();
+  await page.waitForURL(`${base}/privacy`);
+  await page.getByRole('heading', { name: 'Privacy, in plain language' }).waitFor();
+  await page.waitForFunction(() => document.activeElement === document.querySelector('h1'));
+  const announcement = await page.locator('#route-status').innerText();
+  if (!announcement.includes('Privacy')) throw new Error(`Route change was not announced: ${announcement}`);
+
+  const response = await page.goto(`${base}/missing-regression-route`, { waitUntil: 'networkidle' });
+  if (response?.status() !== 404) throw new Error(`Missing route returned ${response?.status()}`);
+  if (await page.title() !== 'Page not found — Tutor Session Trace') throw new Error(`Missing route title differs: ${await page.title()}`);
+  if (!(await page.getByRole('heading', { name: 'This page could not be found' }).isVisible())) throw new Error('Missing route has no useful h1');
+  if (await page.locator('main').count() !== 1) throw new Error('Missing route has no main landmark');
+  if (!(await page.getByRole('link', { name: 'Open your notebook' }).isVisible())) throw new Error('Missing route has no way back');
+  const axe = await new AxeBuilder({ page }).analyze();
+  const serious = axe.violations.filter(violation => ['serious', 'critical'].includes(violation.impact));
+  if (serious.length) throw new Error(`Missing page accessibility violations: ${JSON.stringify(serious)}`);
   await context.close();
 });
 

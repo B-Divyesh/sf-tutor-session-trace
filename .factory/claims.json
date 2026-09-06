@@ -2,7 +2,7 @@
   {
     "id": "private-exports",
     "claim": "Tutor-only observations are excluded from Markdown, print/PDF, and student recaps.",
-    "where": "README, session share panel, privacy page",
+    "where": "README, landing privacy section, session share panel, privacy page",
     "test": "npm run test:repairs -- --grep @claim:private-exports",
     "sandbox": "fresh browser storage; one public and one tutor-only moment; inspect print media, generated PDF, and downloaded Markdown"
   },
@@ -45,8 +45,15 @@
     "id": "shared-recap-lifecycle",
     "claim": "Student recap links expire after the chosen period, count opens, and can be deleted early.",
     "where": "README, share panel, privacy page",
-    "test": "npm run test:repairs -- --grep @claim:shared-recap-lifecycle",
-    "sandbox": "fresh backend record; assert seven-day expiry, one counted open, authenticated deletion, and subsequent 404"
+    "test": "cargo test --test shares claim_shared_recap_lifecycle",
+    "sandbox": "fresh backend record; assert seven-day expiry, one counted open, authenticated deletion, expired-link denial, and removal"
+  },
+  {
+    "id": "expired-share-cleanup",
+    "claim": "Expired shared recaps are removed by routine cleanup.",
+    "where": "README, privacy page",
+    "test": "cargo test --test shares claim_expired_share_cleanup",
+    "sandbox": "fresh backend record seeded with an expired timestamp; run the routine cleanup and assert the record is gone"
   },
   {
     "id": "privacy-no-tracking",
@@ -58,7 +65,7 @@
   {
     "id": "paid-plan",
     "claim": "A valid paid license allows more than five local sessions and 1–30 day recap expiry.",
-    "where": "settings, README, terms",
+    "where": "landing plan section, settings, README, terms",
     "test": "npm run test:repairs -- --grep @claim:paid-plan",
     "sandbox": "fresh browser context with a recorded valid Sociobot verdict; assert sixth-session creation and exact 1, 7, 14, and 30-day choices"
   },

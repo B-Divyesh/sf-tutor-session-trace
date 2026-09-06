@@ -1,6 +1,6 @@
 # Landing copy audit
 
-Audited 2026-08-30. Counts treat hyphenated terms as one word. No sentence
+Audited 2026-09-06. Counts treat hyphenated terms as one word. No sentence
 exceeds 22 words and none uses a banned marketing term.
 
 | Copy | Words | Result |
@@ -12,6 +12,12 @@ exceeds 22 words and none uses a banned marketing term.
 | Sharing requires student consent | 4 | Pass |
 | The demo opens a finished lesson trace. | 7 | Pass |
 | It never reads or changes your notebook. | 7 | Pass |
+| Add the student, topic, and lesson date. | 8 | Pass |
+| Keep moments, a summary, and a next practice task. | 10 | Pass |
+| Record consent, then send an expiring student link. | 8 | Pass |
+| It does not run calls, edit repositories, execute code, or replace a learning system. | 14 | Pass |
+| Tutor-only notes are excluded from student recaps and exports. | 9 | Pass |
+| $19 one time adds unlimited local history and 1–30 day recap expiry choices. | 13 | Pass |
 | Session notes for one-to-one coding tutors. | 6 | Pass |
 | Built by Param Factory. | 4 | Pass |
 
@@ -28,3 +34,4 @@ session.”
 | Work assigned after the lesson | practice task |
 | A note hidden from students and exports | tutor-only note |
 | The isolated sample experience | demo |
+| The paid one-time purchase | full notebook plan |

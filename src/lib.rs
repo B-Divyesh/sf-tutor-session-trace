@@ -11,7 +11,7 @@ use axum::{
     extract::{connect_info::ConnectInfo, DefaultBodyLimit, Path, Query, State},
     http::{header, HeaderMap, HeaderName, HeaderValue, Request, StatusCode},
     middleware::{self, Next},
-    response::{IntoResponse, Response},
+    response::{Html, IntoResponse, Response},
     routing::{get, get_service, post},
     Json, Router,
 };
@@ -84,13 +84,28 @@ pub fn app(state: AppState, frontend: PathBuf) -> Router {
         .route("/terms", get_service(ServeFile::new(index.clone())))
         .route("/s/{id}", get_service(ServeFile::new(index)));
 
+    let static_routes = Router::new()
+        .nest_service("/assets", ServeDir::new(frontend.join("assets")))
+        .nest_service("/icons", ServeDir::new(frontend.join("icons")))
+        .route_service("/404.css", ServeFile::new(frontend.join("404.css")))
+        .route_service("/favicon.svg", ServeFile::new(frontend.join("favicon.svg")))
+        .route_service(
+            "/manifest.webmanifest",
+            ServeFile::new(frontend.join("manifest.webmanifest")),
+        )
+        .route_service("/robots.txt", ServeFile::new(frontend.join("robots.txt")))
+        .route_service("/sitemap.xml", ServeFile::new(frontend.join("sitemap.xml")))
+        .route_service("/sw.js", ServeFile::new(frontend.join("sw.js")));
+
     Router::new()
         .route("/health", get(health))
         .merge(share_routes)
         .merge(client_routes)
+        .merge(static_routes)
         // Known browser routes above receive the SPA shell with 200. Unknown
-        // paths retain a genuine 404 instead of masquerading as legal pages.
-        .fallback_service(ServeDir::new(frontend))
+        // paths retain a genuine 404, with a usable product page rather than
+        // ServeDir's empty fallback response.
+        .fallback(not_found_page)
         .layer(middleware::from_fn(security_headers))
         .layer(TraceLayer::new_for_http())
         .with_state(state)
@@ -182,6 +197,13 @@ fn rate_error(retry_after: &'static str, message: impl Into<String>) -> AppError
 
 async fn health() -> Json<Value> {
     Json(json!({ "status": "ok", "build": BUILD_SHA }))
+}
+
+async fn not_found_page() -> (StatusCode, Html<&'static str>) {
+    (
+        StatusCode::NOT_FOUND,
+        Html(include_str!("../frontend/public/404.html")),
+    )
 }
 
 async fn create_share(

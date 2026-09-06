@@ -38,7 +38,7 @@ Configuration is environment-only:
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `PORT` | `8080` | HTTP listen port |
-| `DATABASE_URL` | `sqlite://data/trace.db` | SQLite URL locally; managed PostgreSQL URL in production |
+| `DATABASE_URL` | `sqlite://data/trace.db` | SQLite URL; the deployed service points it at the durable `/data` mount |
 | `FRONTEND_DIR` | `dist` | Built frontend directory |
 | `SOCIOBOT_BILLING_PRODUCT_URL` | Sociobot production product URL | Server-side license-verification endpoint for paid 8–30 day links |
 | `RUST_LOG` | `info,tower_http=info` | Structured log filter |
@@ -64,7 +64,8 @@ checks.
 
 Run `npm run test:repairs` for print/PDF privacy, invalid-link recovery, PWA
 installability, offline recap recovery, demo isolation, the five-session
-limit, checkout-link wiring, and 390 px legal-link targets. The command builds
+limit, checkout-link wiring, 390 px legal-link targets, route focus, landing
+structure, and the designed 404 response. The command builds
 and starts an isolated local server when `BASE_URL` is unset. Set `BASE_URL`
 to test an existing product. `npm run test:live-checkout` additionally verifies
 that the production Sociobot endpoint redirects to hosted checkout.
@@ -78,7 +79,7 @@ and remove the recap fixtures they create.
 The backend tests exercise consent rejection, private-field rejection,
 server-verified paid expiry enforcement, legal deep-link responses,
 create/open/count/revoke, durable reopen consistency, concurrent recap opens,
-the immutable health identity, HSTS, bounded API request rates with
+expired-link denial and cleanup, the immutable health identity, HSTS, bounded API request rates with
 `Retry-After`, and safe forwarding-header handling. A simple local load smoke
 after starting the server is:
 
@@ -100,7 +101,8 @@ The multi-stage image runs as the unprivileged `trace` user. The committed
 Container Apps configuration mounts the product's durable Azure Files share at
 `/data`, selects SQLite's Azure Files-safe dot-file locking, and fixes the
 service at one replica. That boundary keeps recap state and the per-client rate
-windows consistent. `scripts/deploy-container.sh`
+windows consistent. Expired shared copies are removed at startup and by an
+hourly cleanup task. `scripts/deploy-container.sh`
 builds the exact committed SHA, applies that configuration, and rejects a live
 health identity mismatch. TLS and public routing belong at the deployment layer.
 

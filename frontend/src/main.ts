@@ -8,10 +8,11 @@ const LICENSE_KEY = 'sb_license:tutor-session-trace';
 const VERDICT_KEY = `${LICENSE_KEY}:verdict`;
 const BILLING = 'https://api.sociobot.in/api/v1/products/tutor-session-trace';
 let storageError = '';
-const demoMode = location.pathname === '/demo' || new URLSearchParams(location.search).get('demo') === '1';
+let demoMode = location.pathname === '/demo' || new URLSearchParams(location.search).get('demo') === '1';
 let store = loadStore();
 let paid = cachedPaid();
 let toast = '';
+const routeStatus = document.querySelector<HTMLElement>('#route-status');
 
 function escapeHtml(value: unknown): string {
   return String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char]!);
@@ -86,43 +87,59 @@ function shell(content: string, extra = '') {
   ${!navigator.onLine ? '<div class="offline" role="status">Offline — local notes still work; sharing will wait for a connection.</div>' : ''}
   ${storageError ? `<div class="error-banner" role="alert">${escapeHtml(storageError)}</div>` : ''}
   ${content}
-  <footer><span>Session notes for one-to-one coding tutors. Built by Param Factory.</span><span><a href="/privacy">Privacy</a><a href="/terms">Terms</a></span></footer>
+  <footer><span>Session notes for one-to-one coding tutors.</span><span class="footer-links"><a href="/privacy">Privacy</a><a href="/terms">Terms</a><span class="footer-build">Built by Param Factory · v1.0.0</span></span></footer>
   <div class="toast" data-toast aria-live="polite">${escapeHtml(toast)}</div>${extra}`;
 }
 
-function render() {
-  const path = location.pathname;
-  if (path === '/privacy' || path === '/terms') return renderLegal(path);
-  if (path.startsWith('/s/')) return void renderShared(path.slice(3));
-  renderNotebook();
+function focusRouteHeading() {
+  window.requestAnimationFrame(() => {
+    const heading = app.querySelector<HTMLElement>('main h1');
+    if (!heading) return;
+    heading.tabIndex = -1;
+    heading.focus();
+    if (routeStatus) routeStatus.textContent = `${document.title}.`;
+  });
 }
 
-function renderNotebook() {
+function render(focusHeading = false) {
+  const nextDemoMode = location.pathname === '/demo' || new URLSearchParams(location.search).get('demo') === '1';
+  if (nextDemoMode !== demoMode) {
+    demoMode = nextDemoMode;
+    store = loadStore();
+  }
+  const path = location.pathname;
+  if (path === '/privacy' || path === '/terms') return renderLegal(path, focusHeading);
+  if (path.startsWith('/s/')) return void renderShared(path.slice(3), focusHeading);
+  renderNotebook(focusHeading);
+}
+
+function renderNotebook(focusHeading = false) {
   document.title = demoMode ? 'Demo — Tutor Session Trace' : 'Tutor Session Trace — record coding lesson notes';
   const active = store.sessions.find(session => session.id === store.activeId) || store.sessions[0];
   if (active && store.activeId !== active.id) store.activeId = active.id;
   app.innerHTML = shell(`<main id="main" tabindex="-1" class="notebook-shell ${active ? 'has-session' : 'is-empty'}">
     <aside class="session-rail" aria-label="Session notebook">
-      <div class="rail-heading"><div><span class="eyebrow">Session list</span><h2>Sessions</h2></div><span class="plan-stamp">${paid ? 'Full plan' : `${store.sessions.length}/5 free`}</span></div>
+      <div class="rail-heading"><div><span class="eyebrow">Session list</span><p class="rail-title">Sessions</p></div><span class="plan-stamp">${paid ? 'Full plan' : `${store.sessions.length}/5 free`}</span></div>
       ${store.sessions.length ? `<label class="search-label" for="session-search">Find a session</label><input id="session-search" type="search" placeholder="Student or topic" autocomplete="off"><ol class="session-list">${store.sessions.map(session => `<li><button data-session="${session.id}" class="session-tab ${active?.id === session.id ? 'active' : ''}"><strong>${escapeHtml(session.student)}</strong><span>${escapeHtml(session.topic)}</span><time datetime="${session.date}">${formatDate(session.date)}</time></button></li>`).join('')}</ol>` : ''}
       <form class="new-session" data-new-session>
-        <h3>${store.sessions.length ? 'Start another session' : 'Start your first trace'}</h3>
+        <p class="rail-form-title">${store.sessions.length ? 'Start another session' : 'Start your first trace'}</p>
         <p>Only the tutor’s browser stores this notebook.</p>
         <label for="student">Student name</label><input id="student" name="student" required maxlength="80" autocomplete="off">
         <label for="topic">Session topic</label><input id="topic" name="topic" required maxlength="120" placeholder="e.g. Tracing recursive calls">
         <label for="session-date">Date</label><input id="session-date" name="date" type="date" required value="${new Date().toISOString().slice(0, 10)}">
         <button class="primary" type="submit" ${!paid && store.sessions.length >= 5 ? 'disabled aria-describedby="free-limit"' : ''}>Open session page</button>
-        ${!paid && store.sessions.length >= 5 ? '<p id="free-limit" class="field-note">Free notebooks hold five sessions. Delete one or unlock unlimited history.</p>' : ''}
+        ${!paid && store.sessions.length >= 5 ? '<p id="free-limit" class="field-note">Free notebooks hold five sessions. Delete one or get unlimited history.</p>' : ''}
       </form>
     </aside>
     <section class="workspace" aria-label="Active session">${active ? sessionView(active) : emptyView()}</section>
   </main>`, settingsDialog());
   bindCommon();
   bindNotebook(active);
+  if (focusHeading) focusRouteHeading();
 }
 
 function emptyView() {
-  return `<div class="empty-state"><div class="empty-copy"><span class="eyebrow">Tutor Session Trace</span><h1>Record coding lessons and share next steps</h1><p>For one-to-one coding tutors who need useful notes without leaving the call or shared editor.</p><ul><li><span>01</span> Five sessions are free</li><li><span>02</span> Local notes work offline</li><li><span>03</span> Sharing requires student consent</li></ul><div class="first-actions"><button class="primary" data-start-demo>Try it with sample data</button><a class="button-link" href="#student">Start your first session</a></div><p class="action-note">The demo opens a finished lesson trace. It never reads or changes your notebook.</p></div><picture class="hero-art"><source media="(max-width: 700px)" srcset="/assets/field-notebook-720.webp"><img src="/assets/field-notebook-1280.webp" width="1280" height="853" fetchpriority="high" alt="An open field notebook with timeline rules, pressed ferns, and writing tools arranged on a tutor's desk."></picture></div>`;
+  return `<div class="landing-page"><div class="empty-state"><div class="empty-copy"><span class="eyebrow">Tutor Session Trace</span><h1>Record coding lessons and share next steps</h1><p>For one-to-one coding tutors who need useful notes without leaving the call or shared editor.</p><ul><li><span>01</span> Five sessions are free</li><li><span>02</span> Local notes work offline</li><li><span>03</span> Sharing requires student consent</li></ul><div class="first-actions"><button class="primary" data-start-demo>Try it with sample data</button><a class="button-link" href="#student">Start your first session</a></div><p class="action-note">The demo opens a finished lesson trace. It never reads or changes your notebook.</p></div><picture class="hero-art"><source media="(max-width: 700px)" srcset="/assets/field-notebook-720.webp"><img src="/assets/field-notebook-1280.webp" width="1280" height="853" fetchpriority="high" alt="An open field notebook with timeline rules, pressed ferns, and writing tools arranged on a tutor's desk."></picture></div><div class="landing-details"><section aria-labelledby="how-it-works"><span class="eyebrow">Three steps</span><h2 id="how-it-works">How it works</h2><ol class="how-steps"><li><strong>Open a session</strong><span>Add the student, topic, and lesson date.</span></li><li><strong>Record attempts</strong><span>Keep moments, a summary, and a next practice task.</span></li><li><strong>Share the recap</strong><span>Record consent, then send an expiring student link.</span></li></ol></section><section aria-labelledby="privacy-and-limits"><span class="eyebrow">Boundaries</span><h2 id="privacy-and-limits">Privacy and limits</h2><p>It does not run calls, edit repositories, execute code, or replace a learning system.</p><p>Tutor-only notes are excluded from student recaps and exports.</p></section><section aria-labelledby="full-notebook-plan"><span class="eyebrow">One-time purchase</span><h2 id="full-notebook-plan">Full notebook plan</h2><p>$19 one time adds unlimited local history and 1–30 day recap expiry choices.</p><button data-settings>See plan and license options</button></section></div></div>`;
 }
 
 function sessionView(session: TraceSession) {
@@ -281,20 +298,24 @@ async function deleteShare(session: TraceSession) {
   catch { announce('Could not delete the shared copy. Check your connection and try again.'); render(); }
 }
 
-async function renderShared(id: string) {
+async function renderShared(id: string, focusHeading = false) {
   app.innerHTML = `<a class="skip-link" href="#main">Skip to main content</a><main id="main" class="shared-loading" tabindex="-1"><h1>Opening session trace…</h1><p>Gathering the student-visible notes.</p></main>`;
+  if (focusHeading) focusRouteHeading();
   try {
     const response = await fetch(`/api/shares/${encodeURIComponent(id)}`); const data = await response.json();
     if (!response.ok) throw new Error(response.status === 410 ? 'This recap has expired.' : 'This recap could not be found.');
     document.title = `${data.session_title} — Tutor Session Trace`;
-    app.innerHTML = `<a class="skip-link" href="#main">Skip to main content</a><header class="shared-top"><a class="brand" href="/"><span class="brand-mark" aria-hidden="true">⌁</span><span>Tutor Session Trace</span></a><span>Student recap</span></header><main id="main" class="shared-sheet" tabindex="-1"><header><span class="eyebrow">Session recap · ${formatDate(data.session_date)}</span><h1>${escapeHtml(data.session_title)}</h1><p>Prepared for ${escapeHtml(data.student_name)}</p></header>${data.summary ? `<section><span class="specimen-number">What to remember</span><h2>Session note</h2><p class="lead">${escapeHtml(data.summary)}</p></section>` : ''}<section><span class="specimen-number">What happened</span><h2>Attempt timeline</h2>${sharedMoments(data.moments)}</section><section><span class="specimen-number">Continue from here</span><h2>Next practice</h2>${data.next_tasks.length ? `<ul class="shared-tasks">${data.next_tasks.map((task: { text: string; done: boolean }) => `<li class="${task.done ? 'done' : ''}"><span aria-hidden="true">${task.done ? '✓' : '→'}</span>${escapeHtml(task.text)}</li>`).join('')}</ul>` : '<p>No next-practice tasks were added.</p>'}</section><aside class="student-note">This page contains only notes your tutor marked as student-visible. It expires automatically on ${formatDate(data.expires_at)}.</aside></main><footer><span>Use this recap while you practice.</span><span><a href="/privacy">Privacy</a><a href="/terms">Terms</a></span></footer>`;
+    app.innerHTML = `<a class="skip-link" href="#main">Skip to main content</a><header class="shared-top"><a class="brand" href="/"><span class="brand-mark" aria-hidden="true">⌁</span><span>Tutor Session Trace</span></a><span>Student recap</span></header><main id="main" class="shared-sheet" tabindex="-1"><header><span class="eyebrow">Session recap · ${formatDate(data.session_date)}</span><h1>${escapeHtml(data.session_title)}</h1><p>Prepared for ${escapeHtml(data.student_name)}</p></header>${data.summary ? `<section><span class="specimen-number">What to remember</span><h2>Session note</h2><p class="lead">${escapeHtml(data.summary)}</p></section>` : ''}<section><span class="specimen-number">What happened</span><h2>Attempt timeline</h2>${sharedMoments(data.moments)}</section><section><span class="specimen-number">Continue from here</span><h2>Next practice</h2>${data.next_tasks.length ? `<ul class="shared-tasks">${data.next_tasks.map((task: { text: string; done: boolean }) => `<li class="${task.done ? 'done' : ''}"><span aria-hidden="true">${task.done ? '✓' : '→'}</span>${escapeHtml(task.text)}</li>`).join('')}</ul>` : '<p>No next-practice tasks were added.</p>'}</section><aside class="student-note">This page contains only notes your tutor marked as student-visible. It expires automatically on ${formatDate(data.expires_at)}.</aside></main><footer><span>Student recap from Tutor Session Trace.</span><span class="footer-links"><a href="/privacy">Privacy</a><a href="/terms">Terms</a><span class="footer-build">Built by Param Factory · v1.0.0</span></span></footer>`;
+    if (focusHeading) focusRouteHeading();
   } catch (error) {
     if (!navigator.onLine) {
       app.innerHTML = `<a class="skip-link" href="#main">Skip to main content</a><main id="main" class="shared-error" tabindex="-1"><span class="error-specimen" aria-hidden="true">⌁</span><h1>You’re offline</h1><p>Reconnect to open this saved recap link. The link may still be valid.</p><button class="primary" data-retry-shared>Try again</button><a href="/">About Tutor Session Trace</a></main>`;
       document.querySelector<HTMLButtonElement>('[data-retry-shared]')?.addEventListener('click', () => void renderShared(id));
+      if (focusHeading) focusRouteHeading();
       return;
     }
     app.innerHTML = `<a class="skip-link" href="#main">Skip to main content</a><main id="main" class="shared-error" tabindex="-1"><span class="error-specimen" aria-hidden="true">×</span><h1>${escapeHtml((error as Error).message)}</h1><p>Ask your tutor for a fresh link. No sign-in is needed.</p><a href="/">About Tutor Session Trace</a></main>`;
+    if (focusHeading) focusRouteHeading();
   }
 }
 
@@ -303,10 +324,11 @@ function sharedMoments(items: Array<{ at: string; kind: string; outcome: string;
   return `<ol class="shared-timeline">${items.map(item => { const href = item.attachment?.type === 'link' ? safeLink(item.attachment.value) : null; return `<li><div><time>${formatTime(item.at)}</time><span class="tag">${escapeHtml(label(item.kind))}</span><span class="tag">${escapeHtml(label(item.outcome))}</span></div><p>${escapeHtml(item.note)}</p>${href ? `<a href="${escapeHtml(href)}" target="_blank" rel="noreferrer">Open attached reference ↗</a>` : ''}${item.attachment?.type === 'code' ? `<pre><code>${escapeHtml(item.attachment.value)}</code></pre>` : ''}</li>`; }).join('')}</ol>`;
 }
 
-function renderLegal(path: string) {
+function renderLegal(path: string, focusHeading = false) {
   const privacy = path === '/privacy'; document.title = `${privacy ? 'Privacy' : 'Terms'} — Tutor Session Trace`;
-  const content = privacy ? `<h1>Privacy, in plain language</h1><p class="lead">Your working notebook stays in this browser. We do not run analytics, advertising, or cross-site tracking.</p><h2>What is stored</h2><p>Session names, observations, attachments, consent state, and practice tasks use your browser’s local storage. We receive a student-visible recap only when you choose “Create student link.” Shared recaps contain the student name, date, topic, visible moments, and practice tasks. Tutor-only notes are excluded.</p><h2>How long</h2><p>Shared copies expire after the period shown before creation (7 days on the free plan; 1–30 days with an active license). Tutors can delete a shared copy earlier. Expired records are removed by routine cleanup. Local notes remain until the tutor deletes them or clears browser data.</p><h2>Billing</h2><p>Sociobot/Dodo handles checkout and license verification. This app stores the license token and a daily verification result locally; it never receives card details.</p><h2>Your choices</h2><p>Export or delete local sessions at any time. Ask the tutor who sent a recap to delete the shared copy. Do not put passwords, credentials, or full private repositories in a trace.</p>` : `<h1>Terms of use</h1><p class="lead">Tutor Session Trace is a lightweight teaching record, not an LMS, code host, recording service, or source of academic assessment.</p><h2>Using the service</h2><p>You must have a student’s permission before creating a shared recap. Add only information you are entitled to store and share. Do not include credentials, secrets, full private repositories, unlawful content, or sensitive information that is unnecessary for the lesson.</p><h2>Free and paid use</h2><p>The free plan includes five locally stored sessions, seven-day links, and exports. A $19 one-time license unlocks unlimited local session history and configurable link expiry. Sociobot/Dodo is merchant of record and handles refunds; a refund revokes the license.</p><h2>Availability</h2><p>The service is provided “as is.” Local notes remain usable offline, but link creation, opening, and deletion require the service to be available. Keep your own exports for records you cannot afford to lose.</p><h2>Acceptable use</h2><p>Do not probe, overload, scrape, or use the service to distribute harmful content. Shared links are unlisted, not access-control for highly sensitive data.</p>`;
+  const content = privacy ? `<h1>Privacy, in plain language</h1><p class="lead">Your working notebook stays in this browser. We do not run analytics, advertising, or cross-site tracking.</p><h2>What is stored</h2><p>Session names, moments, attachments, consent, and practice tasks use your browser’s local storage.</p><p>We receive a student recap only when you choose “Create student link.”</p><p>Shared recaps contain the student name, date, topic, visible moments, and practice tasks. Tutor-only notes are excluded.</p><h2>How long</h2><p>Shared copies expire after the period shown before creation.</p><p>The free plan has seven-day links. An active license offers links from 1 to 30 days.</p><p>Tutors can delete a shared copy early. Expired records are removed by routine cleanup.</p><p>Local notes remain until the tutor deletes them or clears browser data.</p><h2>Billing</h2><p>Sociobot/Dodo handles checkout and license verification.</p><p>This app stores the license token and a daily verification result locally. It never receives card details.</p><h2>Your choices</h2><p>Export or delete local sessions at any time.</p><p>Ask the tutor who sent a recap to delete the shared copy.</p><p>Do not put passwords, credentials, or full private repositories in a trace.</p>` : `<h1>Terms of use</h1><p class="lead">Tutor Session Trace is a teaching record. It is not an LMS, code host, recording service, or assessment tool.</p><h2>Using the service</h2><p>You need a student’s permission before creating a shared recap.</p><p>Add only information you are entitled to store and share.</p><p>Do not include credentials, secrets, full private repositories, unlawful content, or unnecessary sensitive information.</p><h2>Free and paid use</h2><p>The free plan includes five local sessions, seven-day links, and exports.</p><p>A $19 one-time license adds unlimited local history and configurable link expiry.</p><p>Sociobot/Dodo is merchant of record and handles refunds. A refund revokes the license.</p><h2>Availability</h2><p>The service is provided “as is.”</p><p>Local notes work offline. Link creation, opening, and deletion need the service.</p><p>Keep exports for records you cannot afford to lose.</p><h2>Acceptable use</h2><p>Do not probe, overload, scrape, or use the service to distribute harmful content.</p><p>Shared links are unlisted. They are not access control for highly sensitive data.</p>`;
   app.innerHTML = shell(`<main id="main" class="legal-page" tabindex="-1"><a class="back-link" href="/">← Back to notebook</a><article>${content}<p class="legal-date">Effective 27 August 2026</p></article></main>`, settingsDialog()); bindCommon();
+  if (focusHeading) focusRouteHeading();
 }
 
 function formatDate(value: string) { const date = new Date(value.length === 10 ? `${value}T12:00:00` : value); return new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'short', year: 'numeric' }).format(date); }
@@ -331,7 +353,27 @@ function download(name: string, content: string, type: string) { const url = URL
 async function copyText(value: string) { try { await navigator.clipboard.writeText(value); announce('Student link copied.'); render(); } catch { const input = document.querySelector<HTMLInputElement>('#share-url'); input?.select(); announce('Select and copy the link manually.'); render(); } }
 
 window.addEventListener('online', () => { announce('Back online. Sharing is available.'); render(); });
-window.addEventListener('offline', render);
+window.addEventListener('offline', () => render());
+window.addEventListener('popstate', () => render(true));
+document.addEventListener('click', event => {
+  if (event.defaultPrevented || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+  const anchor = (event.target as Element | null)?.closest<HTMLAnchorElement>('a[href]');
+  if (!anchor || anchor.target || anchor.hasAttribute('download')) return;
+  if (anchor.classList.contains('skip-link')) {
+    event.preventDefault();
+    document.querySelector<HTMLElement>('#main')?.focus();
+    return;
+  }
+  const url = new URL(anchor.href, location.href);
+  if (url.origin !== location.origin) return;
+  if (url.pathname === location.pathname && url.search === location.search && url.hash) return;
+  const knownRoute = url.pathname === '/' || url.pathname === '/demo' || url.pathname === '/privacy' || url.pathname === '/terms' || url.pathname.startsWith('/s/');
+  if (!knownRoute) return;
+  event.preventDefault();
+  history.pushState({}, '', `${url.pathname}${url.search}${url.hash}`);
+  window.scrollTo({ top: 0, behavior: 'auto' });
+  render(true);
+});
 if ('serviceWorker' in navigator && import.meta.env.PROD) window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => undefined));
 
 render();

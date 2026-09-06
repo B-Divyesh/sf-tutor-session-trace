@@ -12,11 +12,12 @@ use axum::{
     routing::get,
     Extension, Json, Router,
 };
+use chrono::{Duration, Utc};
 use http_body_util::BodyExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tower::ServiceExt;
-use tutor_session_trace::{app, database_pool_options, AppState};
+use tutor_session_trace::{app, cleanup_expired, database_pool_options, AppState};
 
 fn test_frontend() -> PathBuf {
     let nonce = SystemTime::now()
@@ -71,6 +72,37 @@ fn valid_payload() -> Value {
 async fn json_body(response: axum::response::Response) -> Value {
     let bytes = response.into_body().collect().await.unwrap().to_bytes();
     serde_json::from_slice(&bytes).unwrap()
+}
+
+async fn expired_share_service() -> (axum::Router, sqlx::AnyPool, String) {
+    let pool = database_pool_options()
+        .max_connections(1)
+        .connect("sqlite::memory:")
+        .await
+        .unwrap();
+    sqlx::migrate!().run(&pool).await.unwrap();
+    let id = "abcdefghijklmnopqrstuv".to_owned();
+    let content = json!({
+        "student_name": "Mina",
+        "session_title": "Expired lifecycle proof",
+        "session_date": "2026-08-30",
+        "summary": "This fixture has expired.",
+        "moments": [],
+        "next_tasks": []
+    });
+    sqlx::query("INSERT INTO shares (id, delete_key, content, created_at, expires_at) VALUES ($1, $2, $3, $4, $5)")
+        .bind(&id)
+        .bind("expired-fixture-key")
+        .bind(content.to_string())
+        .bind((Utc::now() - Duration::days(2)).to_rfc3339())
+        .bind((Utc::now() - Duration::days(1)).to_rfc3339())
+        .execute(&pool)
+        .await
+        .unwrap();
+    let service = app(AppState::new(pool.clone()), test_frontend()).layer(Extension(ConnectInfo(
+        "203.0.113.10:443".parse::<SocketAddr>().unwrap(),
+    )));
+    (service, pool, id)
 }
 
 #[tokio::test]
@@ -134,6 +166,100 @@ async fn share_lifecycle_records_opens_and_revokes() {
         .await
         .unwrap();
     assert_eq!(missing.status(), StatusCode::NOT_FOUND);
+}
+
+// @claim:shared-recap-lifecycle
+#[tokio::test]
+async fn claim_shared_recap_lifecycle() {
+    let service = test_app().await;
+    let created = service
+        .clone()
+        .oneshot(
+            Request::post("/api/shares")
+                .header("content-type", "application/json")
+                .body(Body::from(valid_payload().to_string()))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(created.status(), StatusCode::CREATED);
+    let created = json_body(created).await;
+    let id = created["id"].as_str().unwrap().to_owned();
+    let key = created["delete_key"].as_str().unwrap().to_owned();
+    let expiry = chrono::DateTime::parse_from_rfc3339(created["expires_at"].as_str().unwrap())
+        .unwrap()
+        .with_timezone(&Utc);
+    assert!(
+        (expiry - Utc::now() - Duration::days(7))
+            .num_seconds()
+            .abs()
+            < 10
+    );
+
+    let opened = service
+        .clone()
+        .oneshot(
+            Request::get(format!("/api/shares/{id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(opened.status(), StatusCode::OK);
+    let status = service
+        .clone()
+        .oneshot(
+            Request::get(format!("/api/shares/{id}/status?key={key}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(json_body(status).await["opens"], 1);
+    let deleted = service
+        .clone()
+        .oneshot(
+            Request::delete(format!("/api/shares/{id}?key={key}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(deleted.status(), StatusCode::NO_CONTENT);
+
+    let (expired_service, pool, expired_id) = expired_share_service().await;
+    let expired = expired_service
+        .oneshot(
+            Request::get(format!("/api/shares/{expired_id}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(expired.status(), StatusCode::GONE);
+    let remaining = sqlx::query("SELECT id FROM shares WHERE id = $1")
+        .bind(&expired_id)
+        .fetch_optional(&pool)
+        .await
+        .unwrap();
+    assert!(remaining.is_none(), "opening an expired recap removes it");
+}
+
+// @claim:expired-share-cleanup
+#[tokio::test]
+async fn claim_expired_share_cleanup() {
+    let (_service, pool, expired_id) = expired_share_service().await;
+    let removed = cleanup_expired(&pool).await.unwrap();
+    assert_eq!(removed, 1, "routine cleanup removes the expired recap");
+    let expired = sqlx::query("SELECT id FROM shares WHERE id = $1")
+        .bind(&expired_id)
+        .fetch_optional(&pool)
+        .await
+        .unwrap();
+    assert!(
+        expired.is_none(),
+        "expired recap remains unavailable after cleanup"
+    );
 }
 
 #[tokio::test]
@@ -300,6 +426,10 @@ async fn legal_routes_have_real_success_responses_and_unknown_paths_do_not() {
         .await
         .unwrap();
     assert_eq!(missing.status(), StatusCode::NOT_FOUND);
+    let body = missing.into_body().collect().await.unwrap().to_bytes();
+    let page = String::from_utf8(body.to_vec()).unwrap();
+    assert!(page.contains("This page could not be found"));
+    assert!(page.contains("<main"));
 }
 
 #[tokio::test]

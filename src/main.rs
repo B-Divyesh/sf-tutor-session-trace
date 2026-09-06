@@ -43,6 +43,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     if removed > 0 {
         info!(removed, "expired shares removed");
     }
+    let cleanup_pool = pool.clone();
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(Duration::from_secs(60 * 60)).await;
+            match cleanup_expired(&cleanup_pool).await {
+                Ok(removed) if removed > 0 => info!(removed, "expired shares removed"),
+                Ok(_) => {}
+                Err(error) => warn!(%error, "expired share cleanup failed"),
+            }
+        }
+    });
 
     let frontend = PathBuf::from(env::var("FRONTEND_DIR").unwrap_or_else(|_| "dist".into()));
     let billing_product_url = env::var("SOCIOBOT_BILLING_PRODUCT_URL")

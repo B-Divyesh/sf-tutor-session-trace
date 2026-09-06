@@ -57,6 +57,11 @@ The demo follows the same notebook grammar but uses its own olive banner to
 make the storage boundary persistent and unmistakable. Its realistic sample
 is stored under a separate `demo:` namespace.
 
+The 404 page uses the same linen sheet, ink border, fern-green action, and
+field-notebook mark as the product. It is deliberately a short recovery page:
+one plain error, one sentence about the likely cause, and links back to the
+notebook or sample. It has no separate illustration or third-party asset.
+
 ## Accessibility and content policy
 
 The illustration has descriptive alt text when it carries the empty-state concept and is absent from the working session view. Focus uses a 3 px moss outline plus paper offset. Each route has one job-focused `<h1>`; workspace section labels begin at `<h2>`. Student recaps use plain language and never expose tutor-only notes. Print media removes the entire tutor-only moment rather than hiding only its label. Consent is unchecked by default and sharing is unavailable until the tutor records it.
